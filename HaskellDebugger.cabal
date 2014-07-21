@@ -14,9 +14,9 @@ build-type:          Simple
 cabal-version:       >=1.8
 
 executable HaskellDebugger
-  -- main-is:          
-  hs-source-dirs:    src   
-  -- other-modules:       
-  build-depends:     base, 
-		     ghc,
-		     ghc-paths
+    -- main-is:          
+    hs-source-dirs:     src   
+    -- other-modules:       
+    build-depends:      base,
+                        ghc,
+                        ghc-paths
