@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
+
 import Data.Char
 
 -- | Parser type
@@ -69,7 +71,7 @@ int = do
     d <- rest digit
     return (read (s ++ d) :: Int)
   
--- | Parses non-empty sequence of 'ok' chars
+-- | Parses sequence of 'ok' chars
 manySatisfiedChars :: (Char -> Bool) -> Parser String
 manySatisfiedChars = many . satisfy
 restSatisfiedChars :: (Char -> Bool) -> Parser String
