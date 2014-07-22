@@ -22,12 +22,15 @@ whileNot p = do
     x <- p
     if not x then whileNot p else return ()
 
+-- |Test module file
 mainModulePath :: String
 mainModulePath = "Main.hs"
 
+-- |Test module name
 mainModuleName :: String
 mainModuleName = "Main"
 
+-- |Setup needed flags before running debug program
 setupContext :: GhcMonad m => String -> String -> m ()
 setupContext pathToModule nameOfModule = do
     dflags <- getSessionDynFlags
@@ -38,9 +41,18 @@ setupContext pathToModule nameOfModule = do
     GHC.load LoadAllTargets
     setContext [IIModule $ mkModuleName nameOfModule]
 
+-- |Context for test file
 setupStandardContext :: GhcMonad m => m ()
 setupStandardContext = setupContext mainModulePath mainModuleName
 
+-- |Runs Ghc program with default settings
+defaultRunGhc :: Ghc a -> IO ()
+defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $ do
+    setupStandardContext
+    program
+    return ()
+
+-- |Prints SDoc to a given stream
 printSDoc :: GhcMonad m => Handle -> Outputable.SDoc -> m ()
 printSDoc handle message = do
     dflags <- getDynFlags
@@ -48,18 +60,21 @@ printSDoc handle message = do
     liftIO $ Outputable.printForUser dflags handle unqual message
     return ()
 
+-- |Prints Outputable to a given stream
 printOutputable :: (GhcMonad m, Outputable d) => Handle -> d -> m ()
 printOutputable handle message = printSDoc handle $ Outputable.ppr message
 
+-- |Prints String to a given stream
 printString :: (GhcMonad m) => Handle -> String -> m ()
 printString handle message = printSDoc handle $ Outputable.text message
 
+-- |Runs trace of a given command
 trace :: GhcMonad m => String -> m RunResult
 trace expr = do
     printString debugOutput "# Trace started"
     runStmt expr RunAndLogSteps
 
--- Returns True if debug finished
+-- |Outputs run results and returns True iff debug finished
 handleRunResult :: GhcMonad m => RunResult -> m Bool
 handleRunResult result = let
     print_ [] = return ()
@@ -88,13 +103,7 @@ handleRunResult result = let
                 return False
             _ -> fail "UNHANDLED RESULT"
 
-
-defaultRunGhc :: Ghc a -> IO ()
-defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $ do
-    setupStandardContext
-    program
-    return ()
-
+-- |Sets breakpoint at given module and line
 setBreakpoint :: (GhcMonad m) => String -> Int -> m ()
 setBreakpoint modName line = do
     md <- GHC.lookupModule (mkModuleName modName) Nothing
@@ -104,23 +113,29 @@ setBreakpoint modName line = do
     printString debugOutput $ if res then "# Breakpoint was set at line " ++ show line else "# Breakpoint was not set"
     return ()
 
+-- |Resume program after stopped
 resume :: (GhcMonad m) => m RunResult
 resume = do
     printString debugOutput "# Trace resumed"
     GHC.resume (const True) RunAndLogSteps
 
+-- |Translates line from input stream into DebugCommand
 getCommand :: (GhcMonad m) => Handle -> m DebugCommand
 getCommand handle = do
     line <- liftIO $ hGetLine handle
     return $ fst $ head $ parse debugCommand line
 
--- Returns True if debug finished
+-- |Runs DebugCommand and returns True iff debug is finished
 runCommand :: (GhcMonad m) => DebugCommand -> m (Bool)
 runCommand (SetBreakpoint mod line) = setBreakpoint mod line >> return False
 runCommand (Trace command)          = trace command >>= handleRunResult
 runCommand (Resume)                 = resume >>= handleRunResult
 runCommand _                        = printString debugOutput "# Unknown command" >> return False
 
+-- |In loop waits for commands and executes them
+startCommandLine :: GhcMonad m => m ()
+startCommandLine = whileNot (do {command <- getCommand stdin; runCommand command })
+
 main :: IO ()
-main = defaultRunGhc $ do
-    whileNot (do {command <- getCommand stdin; runCommand command })
+main = defaultRunGhc $ startCommandLine
+
