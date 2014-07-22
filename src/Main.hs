@@ -7,3 +7,5 @@ qsort (a:as) = qsort left ++ [a] ++ qsort right
 
 main :: IO ()
 main = print (qsort [8, 4, 0, 3, 1, 23, 11, 18])
+
+foo a = 1
