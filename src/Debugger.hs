@@ -2,13 +2,14 @@
 
 module Debugger where
 
-import GHC
+import GHC hiding (resume)
+import qualified GHC (resume)
 import GHC.Paths ( libdir )
 import DynFlags
-import Outputable (Outputable)
 import GhcMonad (liftIO)
-import qualified GhcMonad
+import Outputable (Outputable)
 import qualified Outputable
+
 import System.IO
 
 mainModulePath :: String
@@ -24,7 +25,7 @@ setupContext pathToModule nameOfModule = do
                                 , ghcLink   = LinkInMemory
                                 }
     setTargets =<< sequence [guessTarget pathToModule Nothing]
-    load LoadAllTargets
+    GHC.load LoadAllTargets
     setContext [IIModule $ mkModuleName nameOfModule]
 
 setupStandardContext :: GhcMonad m => m ()
@@ -43,14 +44,13 @@ printOutputable handle message = printSDoc handle $ Outputable.ppr message
 printString :: (GhcMonad m) => Handle -> String -> m ()
 printString handle message = printSDoc handle $ Outputable.text message
 
-trace :: GhcMonad m => String -> m ()
+trace :: GhcMonad m => String -> m RunResult
 trace expr = do
     printString stdout "# Trace started"
-    result <- runStmt expr RunAndLogSteps
-    afterRun result
+    runStmt expr RunAndLogSteps
 
-afterRun :: GhcMonad m => RunResult -> m()
-afterRun result = let
+handleRunResult :: GhcMonad m => RunResult -> m()
+handleRunResult result = let
     print_ [] = return ()
     print_ (n:ns) = do
         printOutputable stdout n
@@ -58,22 +58,22 @@ afterRun result = let
     in do
         case result of
             RunOk names -> do
-                printString stdout "# Trace finished."
-                printString stdout "# Observable names: "
+                printString stdout "# Trace finished"
+                printString stdout "# Observable names:"
                 print_ names
             RunBreak _ names m_breakInfo -> do
-                printString stdout "# Trace stopped at line/breakpoint."
-                printString stdout "# Observable names: "
+                printString stdout "# Trace paused"
+                printString stdout "# Observable names:"
                 print_ names
                 case m_breakInfo of
                     Just breakInfo -> do
                         let modName = moduleName $ breakInfo_module breakInfo
-                        printString stdout "# Module name:"
-                        printOutputable stdout modName
+--                        printString stdout "# Module name:"
+--                        printOutputable stdout modName
                         printString stdout "# Line number:"
                         printSDoc stdout $ Outputable.int $ breakInfo_number breakInfo
-                    Nothing -> printString stdout "# No break info."
-            otherwise -> fail "UNHANDLED RESULT"
+                    Nothing -> printString stdout "# No break info"
+            _ -> fail "UNHANDLED RESULT"
 
 
 runCommand :: Ghc a -> IO ()
@@ -91,10 +91,24 @@ setBreakpoint modName line = do
     printString stdout $ if res then "# Breakpoint was set at line " ++ show line else "# Breakpoint was not set"
     return ()
 
+resume :: (GhcMonad m) => m RunResult
+resume = do
+    printString stdout "# Trace resumed"
+    GHC.resume (const True) RunAndLogSteps
 
 main :: IO ()
 main = runCommand $ do
     setBreakpoint mainModuleName 9
     -- Somehow trace stops on line 11 of Main.hs ('foo a = 1'), if the corresponding breakpoint is set:
     -- setBreakpoint mainModuleName 11
-    trace "main"
+    res <- trace "main"
+    let resume_ result = do
+        handleRunResult result
+        case result of
+            RunOk _        -> return ()
+            RunBreak _ _ _ -> do
+                res2 <- resume
+                resume_ res2
+            _ -> fail "UNHANDLED RESULT"
+    resume_ res
+
