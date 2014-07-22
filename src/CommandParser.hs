@@ -119,6 +119,7 @@ data DebugCommand
     | StepInto
     | StepOver
     | Trace String              -- command
+    | Unknown
         deriving Show
 
 debugCommand :: Parser DebugCommand
@@ -129,6 +130,7 @@ history :: Parser DebugCommand
 stepInto :: Parser DebugCommand
 stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
+unknown :: Parser DebugCommand
 
 debugCommand = unlist [
                         setBreakpoint,
@@ -137,7 +139,8 @@ debugCommand = unlist [
                         history,
                         stepInto,
                         stepOver,
-                        trace 
+                        trace,
+                        unknown
                       ]
 
 setBreakpoint = do
@@ -188,5 +191,6 @@ trace = do
     cmd <- restOfInput
     return $ Trace cmd
 
-
-
+unknown = do
+    restOfInput
+    return $ Unknown

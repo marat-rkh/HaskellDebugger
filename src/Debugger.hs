@@ -14,6 +14,8 @@ import CommandParser (parse, debugCommand, DebugCommand(..))
 
 import System.IO
 
+debugOutput :: Handle
+debugOutput = stdout
 
 whileNot :: (Monad m) => m Bool -> m ()
 whileNot p = do
@@ -54,7 +56,7 @@ printString handle message = printSDoc handle $ Outputable.text message
 
 trace :: GhcMonad m => String -> m RunResult
 trace expr = do
-    printString stdout "# Trace started"
+    printString debugOutput "# Trace started"
     runStmt expr RunAndLogSteps
 
 -- Returns True if debug finished
@@ -62,27 +64,27 @@ handleRunResult :: GhcMonad m => RunResult -> m Bool
 handleRunResult result = let
     print_ [] = return ()
     print_ (n:ns) = do
-        printOutputable stdout n
+        printOutputable debugOutput n
         print_ ns
     in do
         case result of
             RunOk names -> do
-                printString stdout "# Trace finished"
-                printString stdout "# Observable names:"
+                printString debugOutput "# Trace finished"
+                printString debugOutput "# Observable names:"
                 print_ names
                 return True
             RunBreak _ names m_breakInfo -> do
-                printString stdout "# Trace paused"
-                printString stdout "# Observable names:"
+                printString debugOutput "# Trace paused"
+                printString debugOutput "# Observable names:"
                 print_ names
                 case m_breakInfo of
                     Just breakInfo -> do
                         let modName = moduleName $ breakInfo_module breakInfo
---                        printString stdout "# Module name:"
---                        printOutputable stdout modName
-                        printString stdout "# Line number:"
-                        printSDoc stdout $ Outputable.int $ breakInfo_number breakInfo
-                    Nothing -> printString stdout "# No break info"
+--                        printString debugOutput "# Module name:"
+--                        printOutputable debugOutput modName
+                        printString debugOutput "# Line number:"
+                        printSDoc debugOutput $ Outputable.int $ breakInfo_number breakInfo
+                    Nothing -> printString debugOutput "# No break info"
                 return False
             _ -> fail "UNHANDLED RESULT"
 
@@ -99,12 +101,12 @@ setBreakpoint modName line = do
     Just mod_info <- getModuleInfo md
     let breaks = modBreaks_flags $ modInfoModBreaks mod_info
     res <- liftIO $ setBreakOn breaks line
-    printString stdout $ if res then "# Breakpoint was set at line " ++ show line else "# Breakpoint was not set"
+    printString debugOutput $ if res then "# Breakpoint was set at line " ++ show line else "# Breakpoint was not set"
     return ()
 
 resume :: (GhcMonad m) => m RunResult
 resume = do
-    printString stdout "# Trace resumed"
+    printString debugOutput "# Trace resumed"
     GHC.resume (const True) RunAndLogSteps
 
 getCommand :: (GhcMonad m) => Handle -> m DebugCommand
@@ -117,8 +119,8 @@ runCommand :: (GhcMonad m) => DebugCommand -> m (Bool)
 runCommand (SetBreakpoint mod line) = setBreakpoint mod line >> return False
 runCommand (Trace command)          = trace command >>= handleRunResult
 runCommand (Resume)                 = resume >>= handleRunResult
-runCommand _                        = fail "UNHANDLED COMMAND"
+runCommand _                        = printString debugOutput "# Unknown command" >> return False
 
 main :: IO ()
 main = defaultRunGhc $ do
-    whileNot (do {command <- getCommand stdin; printString stdout $ show command; runCommand command })
+    whileNot (do {command <- getCommand stdin; runCommand command })
