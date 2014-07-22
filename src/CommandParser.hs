@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
+module CommandParser where
 
 import Data.Char
 

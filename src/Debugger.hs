@@ -10,7 +10,15 @@ import GhcMonad (liftIO)
 import Outputable (Outputable)
 import qualified Outputable
 
+import CommandParser (parse, debugCommand, DebugCommand(..))
+
 import System.IO
+
+
+whileNot :: (Monad m) => m Bool -> m ()
+whileNot p = do
+    x <- p
+    if not x then whileNot p else return ()
 
 mainModulePath :: String
 mainModulePath = "Main.hs"
@@ -49,7 +57,8 @@ trace expr = do
     printString stdout "# Trace started"
     runStmt expr RunAndLogSteps
 
-handleRunResult :: GhcMonad m => RunResult -> m()
+-- Returns True if debug finished
+handleRunResult :: GhcMonad m => RunResult -> m Bool
 handleRunResult result = let
     print_ [] = return ()
     print_ (n:ns) = do
@@ -61,6 +70,7 @@ handleRunResult result = let
                 printString stdout "# Trace finished"
                 printString stdout "# Observable names:"
                 print_ names
+                return True
             RunBreak _ names m_breakInfo -> do
                 printString stdout "# Trace paused"
                 printString stdout "# Observable names:"
@@ -73,13 +83,14 @@ handleRunResult result = let
                         printString stdout "# Line number:"
                         printSDoc stdout $ Outputable.int $ breakInfo_number breakInfo
                     Nothing -> printString stdout "# No break info"
+                return False
             _ -> fail "UNHANDLED RESULT"
 
 
-runCommand :: Ghc a -> IO ()
-runCommand command = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $ do
+defaultRunGhc :: Ghc a -> IO ()
+defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $ do
     setupStandardContext
-    command
+    program
     return ()
 
 setBreakpoint :: (GhcMonad m) => String -> Int -> m ()
@@ -96,19 +107,18 @@ resume = do
     printString stdout "# Trace resumed"
     GHC.resume (const True) RunAndLogSteps
 
-main :: IO ()
-main = runCommand $ do
-    setBreakpoint mainModuleName 9
-    -- Somehow trace stops on line 11 of Main.hs ('foo a = 1'), if the corresponding breakpoint is set:
-    -- setBreakpoint mainModuleName 11
-    res <- trace "main"
-    let resume_ result = do
-        handleRunResult result
-        case result of
-            RunOk _        -> return ()
-            RunBreak _ _ _ -> do
-                res2 <- resume
-                resume_ res2
-            _ -> fail "UNHANDLED RESULT"
-    resume_ res
+getCommand :: (GhcMonad m) => Handle -> m DebugCommand
+getCommand handle = do
+    line <- liftIO $ hGetLine handle
+    return $ fst $ head $ parse debugCommand line
 
+-- Returns True if debug finished
+runCommand :: (GhcMonad m) => DebugCommand -> m (Bool)
+runCommand (SetBreakpoint mod line) = setBreakpoint mod line >> return False
+runCommand (Trace command)          = trace command >>= handleRunResult
+runCommand (Resume)                 = resume >>= handleRunResult
+runCommand _                        = fail "UNHANDLED COMMAND"
+
+main :: IO ()
+main = defaultRunGhc $ do
+    whileNot (do {command <- getCommand stdin; printString stdout $ show command; runCommand command })
