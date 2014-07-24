@@ -177,7 +177,7 @@ debugOutput = stdout
 
 -- |Test module file
 mainModulePath :: String
-mainModulePath = "Main.hs"
+mainModulePath = "TestMainModule.hs"
 
 -- |Test module name
 mainModuleName :: String
