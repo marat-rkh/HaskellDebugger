@@ -19,4 +19,5 @@ executable HaskellDebugger
     -- other-modules:       
     build-depends:      base,
                         ghc,
-                        ghc-paths
+                        ghc-paths,
+                        array

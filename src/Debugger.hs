@@ -17,8 +17,6 @@ import Exception (throwIO)
 import Data.Maybe (isNothing)
 import BreakArray
 import Data.Array
-import SrcLoc
-import Data.List
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -60,7 +58,7 @@ getCommand handle = do
 
 -- |Runs DebugCommand and returns True iff debug is finished
 runCommand :: (GhcMonad m) => DebugCommand -> m (Bool)
-runCommand (SetBreakpoint moduleName line) = setBreakpointFirstOfAvailable moduleName line >> return False
+runCommand (SetBreakpoint modName line) = setBreakpointFirstOfAvailable modName line >> return False
 runCommand (Trace command)                 = doTrace command >> return False
 runCommand Resume                          = doResume >> return False
 --runCommand StepInto                 = doStepInto >>= handleRunResult
@@ -69,12 +67,12 @@ runCommand _                               = printString debugOutput "# Unknown 
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: (GhcMonad m) => String -> Int -> m ()
-setBreakpointFirstOfAvailable moduleName line = setBreakpoint moduleName line head
+setBreakpointFirstOfAvailable modName line = setBreakpoint modName line head
 
 -- | setBreakpoint version with selector taking breakpoint which covers the biggest part of source code
 -- | (not completed yet)
 --setBreakpointWithBiggestSpan :: (GhcMonad m) => String -> Int -> m ()
---setBreakpointWithBiggestSpan moduleName line = setBreakpoint moduleName line $ selectWithBiggestSpan
+--setBreakpointWithBiggestSpan modName line = setBreakpoint modName line $ selectWithBiggestSpan
 --    where 
 --        selectWithBiggestSpan :: [(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)
 --        selectWithBiggestSpan breaks | not $ null multilineBreaks = maximumBy comp multilineBreaks
@@ -92,36 +90,36 @@ setBreakpointFirstOfAvailable moduleName line = setBreakpoint moduleName line he
 -- | finds all avaliable breakpoint for given line, then using selector takes one of them and activates it
 -- | if no breaks are avaliable proper message is shown
 setBreakpoint :: (GhcMonad m) => String -> Int -> ([(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)) -> m ()
-setBreakpoint moduleName line selector = do
-    breaksForLine <- findBreaksForLine moduleName line
+setBreakpoint modName line selector = do
+    breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
         []     ->   printString debugOutput "Breakpoints are not allowed for this line"
         b : bs -> do
                     let (breakToSetIndex, breakToSetSrcSpan) = if (null bs) then b else selector (b : bs)
-                    modBreaks <- getModBreaks moduleName
+                    modBreaks <- getModBreaks modName
                     let breaksFlags = modBreaks_flags modBreaks
                     res <- liftIO $ setBreakOn breaksFlags breakToSetIndex
                     printString debugOutput $ if res then "# Breakpoint was set here:\n" ++ show breakToSetSrcSpan else "# Breakpoint was not set"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
 findBreaksForLine :: GhcMonad m => String -> Int -> m [(BreakIndex, SrcSpan)]
-findBreaksForLine moduleName line = filterBreaksLocations moduleName predLineEq
+findBreaksForLine modName line = filterBreaksLocations modName predLineEq
     where predLineEq = \(_, srcSpan) -> case srcSpan of UnhelpfulSpan _ -> False
                                                         RealSrcSpan r   -> line == (srcSpanStartLine r)
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies predicate
 filterBreaksLocations :: GhcMonad m => String -> ((BreakIndex, SrcSpan) -> Bool) -> m [(BreakIndex, SrcSpan)]
-filterBreaksLocations moduleName predicate = do
-    modBreaks <- getModBreaks moduleName
+filterBreaksLocations modName predicate = do
+    modBreaks <- getModBreaks modName
     let breaksLocations = assocs $ modBreaks_locs modBreaks
     return $ filter predicate breaksLocations
 
 -- | get ModBreaks for given modulename
 getModBreaks :: GhcMonad m => String -> m ModBreaks
-getModBreaks moduleName = do
-    module_ <- GHC.lookupModule (mkModuleName moduleName) Nothing
-    Just moduleInfo <- getModuleInfo module_
-    return $ modInfoModBreaks moduleInfo
+getModBreaks modName = do
+    module_ <- GHC.lookupModule (mkModuleName modName) Nothing
+    Just modInfo <- getModuleInfo module_
+    return $ modInfoModBreaks modInfo
 
 ---- | ':trace' command
 doTrace :: GhcMonad m => String -> m ()
@@ -213,8 +211,8 @@ printString handle message = printSDoc handle $ Outputable.text message
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: GhcMonad m => String -> m ()
-printAllBreaksInfo moduleName = do
-    modBreaks <- getModBreaks moduleName
+printAllBreaksInfo modName = do
+    modBreaks <- getModBreaks modName
     -- modBreaks_flags - 0 if unset 1 if set
     printString debugOutput "# modBreaks_flags:"
     liftIO $ showBreakArray $ modBreaks_flags $ modBreaks
