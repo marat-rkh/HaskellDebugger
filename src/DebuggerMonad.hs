@@ -3,19 +3,23 @@ module DebuggerMonad where
 import GHC hiding (resume)
 import Data.IORef
 import Control.Monad
-import Exception
-import GhcMonad hiding (liftIO)
+import Exception (ExceptionMonad(..))
+import GhcMonad ()
 import DynFlags
 import MonadUtils
 
+import System.IO
+
 
 data DebugState = DebugState {
-    breaks :: [(Int, Module, Int)] -- number, module, line
+    breaks :: [(Int, Module, Int)], -- number, module, line
+    handle :: Handle
 }
 
 initState :: DebugState
 initState = DebugState {
-    breaks = []
+    breaks = [],
+    handle = stdout
 }
 
 newtype Debugger a = Debugger {toGhc :: IORef DebugState -> Ghc a}

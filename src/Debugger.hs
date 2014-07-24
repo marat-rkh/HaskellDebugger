@@ -110,10 +110,10 @@ handleRunResult result = let
 -- |Sets breakpoint at given module and line
 setBreakpoint :: String -> Int -> Debugger ()
 setBreakpoint modName line = do
-    md <- GHC.lookupModule (mkModuleName modName) Nothing
+    md <- liftGhc $ GHC.lookupModule (mkModuleName modName) Nothing
     Just mod_info <- getModuleInfo md
     let breaks = modBreaks_flags $ modInfoModBreaks mod_info
-    res <- GhcMonad.liftIO $ setBreakOn breaks line
+    res <- liftGhc $ GhcMonad.liftIO $ setBreakOn breaks line
     printString debugOutput $ if res then "# Breakpoint was set at line " ++ show line else "# Breakpoint was not set"
     return ()
 
@@ -139,7 +139,4 @@ runCommand _                        = printString debugOutput "# Unknown command
 -- |In loop waits for commands and executes them
 startCommandLine :: Debugger ()
 startCommandLine = whileNot (do {command <- getCommand stdin; runCommand command })
-
-main :: IO ()
-main = defaultRunGhc $ startCommandLine
 
