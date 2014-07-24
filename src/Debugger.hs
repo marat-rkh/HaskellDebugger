@@ -223,3 +223,11 @@ printAllBreaksInfo modName = do
     printString debugOutput "# modBreaks_decls:"
     mapM (\(i, ds) -> printString debugOutput (show i ++ " : " ++ show ds)) $ assocs $ modBreaks_decls $ modBreaks
     return ()
+
+-- | parse and execute commands in list (to auto tests)
+-- | exapmle: main = defaultRunGhc $ execCommands [":trace main", ":q"] - load default module, make trace and exit
+execCommands :: GhcMonad m => [String] -> m ()
+execCommands []       = return ()
+execCommands (c : cs) = do
+    runCommand $ fst $ head $ parse debugCommand c
+    execCommands cs
