@@ -119,6 +119,7 @@ data DebugCommand
     | StepInto
     | StepOver
     | Trace String              -- command
+    | Exit
     | Unknown
         deriving Show
 
@@ -130,6 +131,7 @@ history :: Parser DebugCommand
 stepInto :: Parser DebugCommand
 stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
+exit :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -140,6 +142,7 @@ debugCommand = unlist [
                         stepInto,
                         stepOver,
                         trace,
+                        exit,
                         unknown
                       ]
 
@@ -190,6 +193,12 @@ trace = do
     waitAndSkipSpaces
     cmd <- restOfInput
     return $ Trace cmd
+
+exit = do
+    string ":q"
+    skipSpaces
+    end
+    return Exit
 
 unknown = do
     restOfInput
