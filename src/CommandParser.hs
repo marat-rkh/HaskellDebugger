@@ -113,7 +113,7 @@ unlist = foldr (<|>) (fail "Could not parse")
 ------------------------------------------------------------------------
 data DebugCommand 
     = SetBreakpoint String Int  -- module, line
-    | RemoveBreakpoint Int      -- number
+    | RemoveBreakpoint String Int -- module, index
     | Resume
     | History
     | StepInto
@@ -159,10 +159,12 @@ setBreakpoint = do
 removeBreakpoint = do
     string ":delete"
     waitAndSkipSpaces
-    num <- int
+    moduleName <- restSatisfiedChars (not . isSpace)
+    waitAndSkipSpaces
+    ind <- int
     skipSpaces
     end
-    return $ RemoveBreakpoint num
+    return $ RemoveBreakpoint moduleName ind
 
 resume = do
     string ":continue"

@@ -64,12 +64,13 @@ getCommand handle_ = do
 
 -- |Runs DebugCommand and returns True iff debug is finished
 runCommand :: DebugCommand -> Debugger Bool
-runCommand (SetBreakpoint modName line) = setBreakpointLikeGHCiDo modName line >> return False
-runCommand (Trace command)                 = doTrace command >> return False
-runCommand Resume                          = doResume >> return False
---runCommand StepInto                 = doStepInto >>= handleRunResult
-runCommand Exit                            = return True
-runCommand _                               = printString debugOutput "# Unknown command" >> return False
+runCommand (SetBreakpoint modName line)   = setBreakpointLikeGHCiDo modName line >> return False
+runCommand (RemoveBreakpoint modName ind) = deleteBreakpoint modName ind >> return False
+runCommand (Trace command)                = doTrace command >> return False
+runCommand Resume                         = doResume >> return False
+--runCommand StepInto                       = doStepInto >>= handleRunResult
+runCommand Exit                           = return True
+runCommand _                              = printString debugOutput "# Unknown command" >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
@@ -103,11 +104,10 @@ setBreakpoint modName line selector = do
             let mbBreakToSet = if (null bs) then Just b else selector bbs
             case mbBreakToSet of
                 Just (breakIndex, srcSpan) -> do
-                    modBreaks <- getModBreaks modName
-                    let breaksFlags = modBreaks_flags modBreaks
-                    res <- liftIO $ setBreakOn breaksFlags breakIndex
-                    printString debugOutput $ if res then "# Breakpoint was set here:\n" ++ show srcSpan
-                                              else "# Breakpoint was not set: setBreakOn returned False"
+                    res <- changeBreakFlagInModBreaks modName breakIndex True
+                    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
+                              else "# Breakpoint was not set: setBreakOn returned False"
+                    printString debugOutput msg
                 Nothing -> printString debugOutput "# Breakpoint was not set: selector returned Nothing"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
@@ -129,6 +129,26 @@ getModBreaks modName = do
     module_ <- GHC.lookupModule (mkModuleName modName) Nothing
     Just modInfo <- getModuleInfo module_
     return $ modInfoModBreaks modInfo
+
+-- | modBreaks_flags of ModBreaks contains info about set and unset breakpoints for specified module
+-- | This function just set or unset given flag
+changeBreakFlagInModBreaks :: String -> Int -> Bool -> Debugger Bool
+changeBreakFlagInModBreaks modName flagIndex flagValue = do
+    modBreaks <- getModBreaks modName
+    let breaksFlags = modBreaks_flags modBreaks
+    liftIO $ setBreakFlag breaksFlags flagIndex flagValue
+
+setBreakFlag :: BreakArray -> Int -> Bool -> IO Bool
+setBreakFlag bArr ind flag | flag      = setBreakOn bArr ind
+                           | otherwise = setBreakOff bArr ind
+
+-- | ':delete <module name> <break index>' command
+deleteBreakpoint ::  String -> Int -> Debugger ()
+deleteBreakpoint modName breakIndex = do
+    res <- changeBreakFlagInModBreaks modName breakIndex False
+    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was removed"
+              else "# Breakpoint was not removed: incorrect index"
+    printString debugOutput msg
 
 ---- | ':trace' command
 doTrace :: String -> Debugger ()
