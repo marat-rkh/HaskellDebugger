@@ -7,7 +7,7 @@ import qualified GHC (resume)
 import GHC.Paths ( libdir )
 import DynFlags
 import GhcMonad (liftIO)
-import Outputable (Outputable)
+import Outputable (Outputable, (<+>))
 import qualified Outputable
 
 import CommandParser (parse, debugCommand, DebugCommand(..))
@@ -69,6 +69,7 @@ runCommand (RemoveBreakpoint modName ind) = deleteBreakpoint modName ind >> retu
 runCommand (Trace command)                = doTrace command >> return False
 runCommand Resume                         = doResume >> return False
 runCommand StepInto                       = doStepInto >> return False
+runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
 runCommand _                              = printString debugOutput "# Unknown command" >> return False
 
@@ -182,8 +183,8 @@ afterRunStmt canLogSpan runResult = do
                 printListOfOutputable debugOutput names
                 return False
             | otherwise -> do
-                runReuslt <- GHC.resume canLogSpan GHC.SingleStep
-                afterRunStmt canLogSpan runReuslt
+                runResult <- GHC.resume canLogSpan GHC.SingleStep
+                afterRunStmt canLogSpan runResult
         _ -> return False
 
 -- | ':continue' command
@@ -199,6 +200,25 @@ doStepGeneral expr = printString debugOutput "':step <expr>' is not implemented 
 doStepInto :: Debugger ()
 doStepInto = doStepGeneral []
 
+-- | ':history' command
+showHistory :: Int -> Bool -> Debugger ()
+showHistory num showVars = do
+    resumes <- GHC.getResumeContext
+    case resumes of
+        [] -> printString debugOutput "# Not stopped at breakpoint"
+        (r:_) -> do
+            printString debugOutput "# Current history:"
+            let hist = resumeHistory r
+                (took, rest) = splitAt num hist
+            spans <- mapM GHC.getHistorySpan took
+            let idx = map (0-) [(1::Int) ..]
+            mapM (\(i, s, h) -> printSDoc debugOutput $ Outputable.int i <+>
+                        -- todo: get full path of the file
+                        Outputable.text ":" <+>
+                        (Outputable.text . head . GHC.historyEnclosingDecls) h <+>
+                        (Outputable.parens . Outputable.ppr) s
+                ) (zip3 idx spans hist)
+            printString debugOutput $ if (null rest) then "# End of history" else "# End of visible history"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
 
@@ -216,6 +236,10 @@ mainModuleName = "Main"
 -- |Context for test file
 setupStandardContext :: Debugger ()
 setupStandardContext = setupContext mainModulePath mainModuleName
+
+-- |Default history size
+defaultHistSize :: Int
+defaultHistSize = 20
 
 
 ---- || Utils || -------------------------------------------------------
