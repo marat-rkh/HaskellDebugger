@@ -58,8 +58,8 @@ whileNot p = do
 
 -- |Translates line from input stream into DebugCommand
 getCommand :: Handle -> Debugger DebugCommand
-getCommand handle = do
-    line <- liftIO $ hGetLine handle
+getCommand handle_ = do
+    line <- liftIO $ hGetLine handle_
     return $ fst $ head $ parse debugCommand line
 
 -- |Runs DebugCommand and returns True iff debug is finished
@@ -80,16 +80,16 @@ setBreakpointFirstOfAvailable modName line = setBreakpoint modName line (Just . 
 -- |   - the leftmost subexpression starting on the specified line, or
 -- |   - the rightmost subexpression enclosing the specified line
 -- | This strategy is the same to one GHCi currently uses
-setBreakpointLikeGHCiDo :: (GhcMonad m) => String -> Int -> m ()
+setBreakpointLikeGHCiDo :: String -> Int -> Debugger ()
 setBreakpointLikeGHCiDo modName line = setBreakpoint modName line selectOneOf
     where selectOneOf :: [(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)
-          selectOneOf breaks = listToMaybe (sortBy (leftmost_largest `on` snd)  onelineBreaks) `mplus`
-                               listToMaybe (sortBy (leftmost_smallest `on` snd) multilineBreaks) `mplus`
-                               listToMaybe (sortBy (rightmost `on` snd) breaks)
+          selectOneOf breaks_ = listToMaybe (sortBy (leftmost_largest `on` snd)  onelineBreaks) `mplus`
+                                listToMaybe (sortBy (leftmost_smallest `on` snd) multilineBreaks) `mplus`
+                                listToMaybe (sortBy (rightmost `on` snd) breaks_)
             where (onelineBreaks, multilineBreaks) = partition endEqLine breaksWithStartEqLine
                   endEqLine (_, RealSrcSpan r) = GHC.srcSpanEndLine r == line
                   endEqLine _ = False
-                  breaksWithStartEqLine = [ br | br@(_, srcSpan) <- breaks,
+                  breaksWithStartEqLine = [ br | br@(_, srcSpan) <- breaks_,
                                             case srcSpan of (RealSrcSpan r) -> GHC.srcSpanStartLine r == line; _ -> False ]
 
 -- | finds all avaliable breakpoint for given line, then using selector takes one of them and activates it
@@ -201,22 +201,22 @@ setupStandardContext = setupContext mainModulePath mainModuleName
 
 -- |Prints SDoc to a given stream
 printSDoc :: Handle -> Outputable.SDoc -> Debugger ()
-printSDoc handle message = do
+printSDoc handle_ message = do
     dflags <- getDynFlags
     unqual <- getPrintUnqual
-    liftIO $ Outputable.printForUser dflags handle unqual message
+    liftIO $ Outputable.printForUser dflags handle_ unqual message
     return ()
 
 -- |Prints Outputable to a given stream
 printOutputable :: (Outputable d) => Handle -> d -> Debugger ()
-printOutputable handle message = printSDoc handle $ Outputable.ppr message
+printOutputable handle_ message = printSDoc handle_ $ Outputable.ppr message
 
 printListOfOutputable :: (Outputable d) => Handle -> [d] -> Debugger ()
-printListOfOutputable handle = mapM_ (printOutputable handle)
+printListOfOutputable handle_ = mapM_ (printOutputable handle_)
 
 -- |Prints String to a given stream
 printString :: Handle -> String -> Debugger ()
-printString handle message = printSDoc handle $ Outputable.text message
+printString handle_ message = printSDoc handle_ $ Outputable.text message
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
