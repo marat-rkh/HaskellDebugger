@@ -68,7 +68,7 @@ runCommand (SetBreakpoint modName line)   = setBreakpointLikeGHCiDo modName line
 runCommand (RemoveBreakpoint modName ind) = deleteBreakpoint modName ind >> return False
 runCommand (Trace command)                = doTrace command >> return False
 runCommand Resume                         = doResume >> return False
---runCommand StepInto                       = doStepInto >>= handleRunResult
+runCommand StepInto                       = doStepInto >> return False
 runCommand Exit                           = return True
 runCommand _                              = printString debugOutput "# Unknown command" >> return False
 
@@ -150,7 +150,7 @@ deleteBreakpoint modName breakIndex = do
               else "# Breakpoint was not removed: incorrect index"
     printString debugOutput msg
 
----- | ':trace' command
+-- | ':trace' command
 doTrace :: String -> Debugger ()
 doTrace []   = doContinue (const True) GHC.RunAndLogSteps
 doTrace expr = do
@@ -186,17 +186,18 @@ afterRunStmt canLogSpan runResult = do
                 afterRunStmt canLogSpan runReuslt
         _ -> return False
 
-doResume :: Debugger()
+-- | ':continue' command
+doResume :: Debugger ()
 doResume = doContinue (const True) GHC.RunToCompletion
 
----- |:step [<expr>] command - genegal step command
---doStepGeneral :: (GhcMonad m) => String -> m RunResult
---doStepGeneral []   = GHC.resume (const True) GHC.SingleStep
---doStepGeneral expr = printString debugOutput "':step <expr>' is not implemented yet" >> return (RunOk [])
---
----- |performs ':step' command
---doStepInto :: (GhcMonad m) => m RunResult
---doStepInto = doStepGeneral []
+-- |':step [<expr>]' command - genegal step command
+doStepGeneral :: String -> Debugger ()
+doStepGeneral []   = doContinue (const True) GHC.SingleStep
+doStepGeneral expr = printString debugOutput "':step <expr>' is not implemented yet"
+
+-- |':step' command
+doStepInto :: Debugger ()
+doStepInto = doStepGeneral []
 
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
