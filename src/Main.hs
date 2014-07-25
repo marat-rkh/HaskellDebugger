@@ -43,3 +43,61 @@ main = defaultRunGhc startCommandLine
 --                                                                 ":step",
 --                                                                 ":step",
 --                                                                 ":continue"]
+-- | test step over
+--main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 9",
+--                                                                 ":trace main",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal"]
+-- | test input for next one
+--module Main where
+--
+--qsort :: Ord a => [a] -> [a]
+--qsort [] = []
+--qsort (a:as) = qsort left ++ [a] ++ qsort right
+--  where (left,right) = (filter (<=a) as, filter (>a) as)
+--
+--main :: IO ()
+--main = print (qsort [8])
+-- |
+--main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 5",
+--                                                                 ":trace main",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal"]
+-- | test input for next one
+--module Main where
+--
+--
+--
+--
+--
+--
+--left x xs = filter (<=x) xs
+--right x xs = filter (>x) xs
+--
+--qsort [] = []
+--qsort (a:as) = qsort (left a as) ++ [a] ++ qsort (right a as)
+--
+--main :: IO ()
+--main = print (qsort [8])
+-- |
+--main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 12",
+--                                                                 ":trace main",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal",
+--                                                                 ":steplocal"]

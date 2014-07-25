@@ -16,11 +16,12 @@ import DebuggerMonad
 import System.IO
 import Exception (throwIO)
 import Data.Maybe (isNothing, listToMaybe)
-import Control.Monad (mplus)
+import Control.Monad (mplus, liftM)
 import Data.List (partition, sortBy)
 import BreakArray
 import Data.Array
 import Data.Function (on)
+import SrcLoc (realSrcSpanEnd)
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -69,6 +70,7 @@ runCommand (RemoveBreakpoint modName ind) = deleteBreakpoint modName ind >> retu
 runCommand (Trace command)                = doTrace command >> return False
 runCommand Resume                         = doResume >> return False
 runCommand StepInto                       = doStepInto >> return False
+runCommand StepOver                       = doStepLocal >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
 runCommand _                              = printString debugOutput "# Unknown command" >> return False
@@ -111,11 +113,19 @@ setBreakpoint modName line selector = do
                     printString msg
                 Nothing -> printString "# Breakpoint was not set: selector returned Nothing"
 
--- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
+-- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: srcSpanStartLine == line
+-- | todo: this function is very suboptimal, it is temporary decition
 findBreaksForLine :: String -> Int -> Debugger [(BreakIndex, SrcSpan)]
 findBreaksForLine modName line = filterBreaksLocations modName predLineEq
     where predLineEq = \(_, srcSpan) -> case srcSpan of UnhelpfulSpan _ -> False
                                                         RealSrcSpan r   -> line == (srcSpanStartLine r)
+
+-- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: srcSpanStartLine <= line <= srcSpanEndLine
+-- | todo: this function is very suboptimal, it is temporary decition
+findBreaksContainingLine :: String -> Int -> Debugger [(BreakIndex, SrcSpan)]
+findBreaksContainingLine modName line = filterBreaksLocations modName predLineEq
+    where predLineEq = \(_, srcSpan) -> case srcSpan of UnhelpfulSpan _ -> False
+                                                        RealSrcSpan r   -> (srcSpanStartLine r) <= line && line <= (srcSpanEndLine r)
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies predicate
 filterBreaksLocations :: String -> ((BreakIndex, SrcSpan) -> Bool) -> Debugger [(BreakIndex, SrcSpan)]
@@ -183,8 +193,8 @@ afterRunStmt canLogSpan runResult = do
                 printListOfOutputable names
                 return False
             | otherwise -> do
-                runResult <- GHC.resume canLogSpan GHC.SingleStep
-                afterRunStmt canLogSpan runResult
+                nextRunResult <- GHC.resume canLogSpan GHC.SingleStep
+                afterRunStmt canLogSpan nextRunResult
         _ -> return False
 
 -- | ':continue' command
@@ -199,6 +209,61 @@ doStepGeneral expr = printString "':step <expr>' is not implemented yet"
 -- |':step' command
 doStepInto :: Debugger ()
 doStepInto = doStepGeneral []
+
+-- | ':steplocal' command
+doStepLocal :: Debugger ()
+doStepLocal = do
+    mbSrcSpan <- getCurrentBreakSpan
+    case mbSrcSpan of
+        Nothing  -> doStepInto
+        Just srcSpan -> do
+            Just module_ <- getCurrentBreakModule
+            mbCurrentToplevelDecl <- enclosingSpan module_ srcSpan
+            case mbCurrentToplevelDecl of
+                Nothing -> printString debugOutput "# Warning - steplocal was not performed: enclosingSpan returned Nothing"
+                Just currentToplevelDecl -> doContinue (`isSubspanOf` currentToplevelDecl) GHC.SingleStep
+
+-- | Returns the largest SrcSpan containing the given one or Nothing
+enclosingSpan :: Module -> SrcSpan -> Debugger (Maybe SrcSpan)
+enclosingSpan _ (UnhelpfulSpan _) = return Nothing
+enclosingSpan module_ (RealSrcSpan rSrcSpan) = do
+    let line = srcSpanStartLine rSrcSpan
+    breaks_ <- findBreaksContainingLine (moduleNameString $ moduleName module_) line
+    case breaks_ of
+        [] -> return Nothing
+        bs -> return . Just . head . sortBy leftmost_largest $ enclosingSpans bs
+        where
+            enclosingSpans bs = [ s | (_, s) <- bs, case s of UnhelpfulSpan _ -> False
+                                                              RealSrcSpan r   -> realSrcSpanEnd r >= realSrcSpanEnd rSrcSpan ]
+
+
+getCurrentBreakSpan :: Debugger (Maybe SrcSpan)
+getCurrentBreakSpan = do
+  resumes <- GHC.getResumeContext
+  case resumes of
+    [] -> return Nothing
+    (r:_) -> do
+        let ix = GHC.resumeHistoryIx r
+        if ix == 0
+           then return (Just (GHC.resumeSpan r))
+           else do
+                let hist = GHC.resumeHistory r !! (ix-1)
+                pan <- GHC.getHistorySpan hist
+                return (Just pan)
+
+
+getCurrentBreakModule :: Debugger (Maybe Module)
+getCurrentBreakModule = do
+  resumes <- GHC.getResumeContext
+  case resumes of
+    [] -> return Nothing
+    (r:_) -> do
+        let ix = GHC.resumeHistoryIx r
+        if ix == 0
+           then return (GHC.breakInfo_module `liftM` GHC.resumeBreakInfo r)
+           else do
+                let hist = GHC.resumeHistory r !! (ix-1)
+                return $ Just $ GHC.getHistoryModule  hist
 
 -- | ':history' command
 showHistory :: Int -> Bool -> Debugger ()
@@ -260,6 +325,10 @@ printListOfOutputable = mapM_ printOutputable
 -- | Prints String to a given stream
 printString :: String -> Debugger ()
 printString message = printSDoc $ Outputable.text message
+
+-- | printString version with handle_ = debugOutput
+printStrDbg :: String -> Debugger ()
+printStrDbg = printString debugOutput
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
