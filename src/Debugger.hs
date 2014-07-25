@@ -71,7 +71,7 @@ runCommand Resume                         = doResume >> return False
 runCommand StepInto                       = doStepInto >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
-runCommand _                              = Debugger.back >> return False --printString debugOutput "# Unknown command" >> return False
+runCommand _                              = printString debugOutput "# Unknown command" >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
@@ -219,15 +219,6 @@ showHistory num showVars = do
                         (Outputable.parens . Outputable.ppr) s
                 ) (zip3 idx spans hist)
             printString $ if (null rest) then "# End of history" else "# End of visible history"
-
--- | ':back' command
-back = do
-    (names, i, pan) <- GHC.back
-    printString "# Available names"
-    printListOfOutputable names
-    printString "# Some int"
-    printSDoc $ Outputable.int i
-    printOutputable pan
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
 
