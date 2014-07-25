@@ -15,9 +15,12 @@ import DebuggerMonad
 
 import System.IO
 import Exception (throwIO)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, listToMaybe)
+import Control.Monad (mplus)
+import Data.List (partition, sortBy)
 import BreakArray
 import Data.Array
+import Data.Function (on)
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -61,7 +64,7 @@ getCommand handle = do
 
 -- |Runs DebugCommand and returns True iff debug is finished
 runCommand :: DebugCommand -> Debugger Bool
-runCommand (SetBreakpoint modName line) = setBreakpointFirstOfAvailable modName line >> return False
+runCommand (SetBreakpoint modName line) = setBreakpointLikeGHCiDo modName line >> return False
 runCommand (Trace command)                 = doTrace command >> return False
 runCommand Resume                          = doResume >> return False
 --runCommand StepInto                 = doStepInto >>= handleRunResult
@@ -70,39 +73,42 @@ runCommand _                               = printString debugOutput "# Unknown 
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
-setBreakpointFirstOfAvailable modName line = setBreakpoint modName line head
+setBreakpointFirstOfAvailable modName line = setBreakpoint modName line (Just . head)
 
--- | setBreakpoint version with selector taking breakpoint which covers the biggest part of source code
--- | (not completed yet)
---setBreakpointWithBiggestSpan :: (GhcMonad m) => String -> Int -> m ()
---setBreakpointWithBiggestSpan modName line = setBreakpoint modName line $ selectWithBiggestSpan
---    where 
---        selectWithBiggestSpan :: [(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)
---        selectWithBiggestSpan breaks | not $ null multilineBreaks = maximumBy comp multilineBreaks
---                                     | otherwise                  = maximumBy comp breaks
---                                     where multilineBreaks = filter (\(_, srcSpan) -> not $ isOneLineSpan srcSpan) breaks
---                                           comp :: (BreakIndex, SrcSpan) -> (BreakIndex, SrcSpan) -> Ordering
---                                           comp (_, UnhelpfulSpan _) (_, UnhelpfulSpan _) = EQ
---                                           comp (_, UnhelpfulSpan _) (_, RealSrcSpan _)   = LT
---                                           comp (_, RealSrcSpan _) (_, UnhelpfulSpan _)   = GT
---                                           comp (_, RealSrcSpan rs1) (_, RealSrcSpan rs2) = 
---                                                if (linesWidthRs1 < linesWidthRs2) 
---                                                then LT
---                                                else if(linesWidthRs1 == linesWidthRs2 && colWidthRs1 == colWidthRs2)
+-- | setBreakpoint version with selector choosing
+-- |   - the leftmost complete subexpression on the specified line, or
+-- |   - the leftmost subexpression starting on the specified line, or
+-- |   - the rightmost subexpression enclosing the specified line
+-- | This strategy is the same to one GHCi currently uses
+setBreakpointLikeGHCiDo :: (GhcMonad m) => String -> Int -> m ()
+setBreakpointLikeGHCiDo modName line = setBreakpoint modName line selectOneOf
+    where selectOneOf :: [(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)
+          selectOneOf breaks = listToMaybe (sortBy (leftmost_largest `on` snd)  onelineBreaks) `mplus`
+                               listToMaybe (sortBy (leftmost_smallest `on` snd) multilineBreaks) `mplus`
+                               listToMaybe (sortBy (rightmost `on` snd) breaks)
+            where (onelineBreaks, multilineBreaks) = partition endEqLine breaksWithStartEqLine
+                  endEqLine (_, RealSrcSpan r) = GHC.srcSpanEndLine r == line
+                  endEqLine _ = False
+                  breaksWithStartEqLine = [ br | br@(_, srcSpan) <- breaks,
+                                            case srcSpan of (RealSrcSpan r) -> GHC.srcSpanStartLine r == line; _ -> False ]
 
 -- | finds all avaliable breakpoint for given line, then using selector takes one of them and activates it
 -- | if no breaks are avaliable proper message is shown
-setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)) -> Debugger ()
+setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)) -> Debugger ()
 setBreakpoint modName line selector = do
     breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
-        []     ->   printString debugOutput "Breakpoints are not allowed for this line"
-        b : bs -> do
-                    let (breakToSetIndex, breakToSetSrcSpan) = if (null bs) then b else selector (b : bs)
+        []           -> printString debugOutput "# Breakpoints are not allowed for this line"
+        bbs@(b : bs) -> do
+            let mbBreakToSet = if (null bs) then Just b else selector bbs
+            case mbBreakToSet of
+                Just (breakIndex, srcSpan) -> do
                     modBreaks <- getModBreaks modName
                     let breaksFlags = modBreaks_flags modBreaks
-                    res <- liftIO $ setBreakOn breaksFlags breakToSetIndex
-                    printString debugOutput $ if res then "# Breakpoint was set here:\n" ++ show breakToSetSrcSpan else "# Breakpoint was not set"
+                    res <- liftIO $ setBreakOn breaksFlags breakIndex
+                    printString debugOutput $ if res then "# Breakpoint was set here:\n" ++ show srcSpan
+                                              else "# Breakpoint was not set: setBreakOn returned False"
+                Nothing -> printString debugOutput "# Breakpoint was not set: selector returned Nothing"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
 findBreaksForLine :: String -> Int -> Debugger [(BreakIndex, SrcSpan)]
