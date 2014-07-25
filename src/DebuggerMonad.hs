@@ -13,23 +13,23 @@ import System.IO
 
 data DebugState = DebugState {
     breaks :: [(Int, Module, Int)], -- number, module, line
-    handle :: Handle
+    debugOutput :: Handle
 }
 
 initState :: DebugState
 initState = DebugState {
     breaks = [],
-    handle = stdout
+    debugOutput = stdout -- temporary handle for testing
 }
 
 newtype Debugger a = Debugger {toGhc :: IORef DebugState -> Ghc a}
 
-getGHCiState :: Debugger DebugState
-getGHCiState   = Debugger $ \r -> liftIO $ readIORef r
-setGHCiState :: DebugState -> Debugger ()
-setGHCiState s = Debugger $ \r -> liftIO $ writeIORef r s
-modifyGHCiState :: (DebugState -> DebugState) -> Debugger ()
-modifyGHCiState f = Debugger $ \r -> liftIO $ readIORef r >>= writeIORef r . f
+getDebugState :: Debugger DebugState
+getDebugState   = Debugger $ \r -> liftIO $ readIORef r
+setDebugState :: DebugState -> Debugger ()
+setDebugState s = Debugger $ \r -> liftIO $ writeIORef r s
+modifyDebugState :: (DebugState -> DebugState) -> Debugger ()
+modifyDebugState f = Debugger $ \r -> liftIO $ readIORef r >>= writeIORef r . f
 
 liftGhc :: Ghc a -> Debugger a
 liftGhc m = Debugger $ \_ -> m

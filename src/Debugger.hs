@@ -71,7 +71,7 @@ runCommand Resume                         = doResume >> return False
 runCommand StepInto                       = doStepInto >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
-runCommand _                              = printString debugOutput "# Unknown command" >> return False
+runCommand _                              = Debugger.back >> return False --printString debugOutput "# Unknown command" >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
@@ -100,7 +100,7 @@ setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> Maybe (BreakIndex,
 setBreakpoint modName line selector = do
     breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
-        []           -> printString debugOutput "# Breakpoints are not allowed for this line"
+        []           -> printString "# Breakpoints are not allowed for this line"
         bbs@(b : bs) -> do
             let mbBreakToSet = if (null bs) then Just b else selector bbs
             case mbBreakToSet of
@@ -108,8 +108,8 @@ setBreakpoint modName line selector = do
                     res <- changeBreakFlagInModBreaks modName breakIndex True
                     let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
                               else "# Breakpoint was not set: setBreakOn returned False"
-                    printString debugOutput msg
-                Nothing -> printString debugOutput "# Breakpoint was not set: selector returned Nothing"
+                    printString msg
+                Nothing -> printString "# Breakpoint was not set: selector returned Nothing"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
 findBreaksForLine :: String -> Int -> Debugger [(BreakIndex, SrcSpan)]
@@ -149,7 +149,7 @@ deleteBreakpoint modName breakIndex = do
     res <- changeBreakFlagInModBreaks modName breakIndex False
     let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was removed"
               else "# Breakpoint was not removed: incorrect index"
-    printString debugOutput msg
+    printString msg
 
 -- | ':trace' command
 doTrace :: String -> Debugger ()
@@ -171,16 +171,16 @@ afterRunStmt canLogSpan runResult = do
     resumes <- GHC.getResumeContext
     case runResult of
         GHC.RunOk names -> do
-            printString debugOutput "# Trace finished"
-            printString debugOutput "# Observable names:"
-            printListOfOutputable debugOutput names
+            printString "# Trace finished"
+            printString "# Observable names:"
+            printListOfOutputable names
             return True
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
-                printString debugOutput "# Stopped at"
-                printOutputable debugOutput (GHC.resumeSpan $ head resumes)
-                printString debugOutput "# Observable names:"
-                printListOfOutputable debugOutput names
+                printString "# Stopped at"
+                printOutputable (GHC.resumeSpan $ head resumes)
+                printString "# Observable names:"
+                printListOfOutputable names
                 return False
             | otherwise -> do
                 runResult <- GHC.resume canLogSpan GHC.SingleStep
@@ -191,10 +191,10 @@ afterRunStmt canLogSpan runResult = do
 doResume :: Debugger ()
 doResume = doContinue (const True) GHC.RunToCompletion
 
--- |':step [<expr>]' command - genegal step command
+-- |':step [<expr>]' command - general step command
 doStepGeneral :: String -> Debugger ()
 doStepGeneral []   = doContinue (const True) GHC.SingleStep
-doStepGeneral expr = printString debugOutput "':step <expr>' is not implemented yet"
+doStepGeneral expr = printString "':step <expr>' is not implemented yet"
 
 -- |':step' command
 doStepInto :: Debugger ()
@@ -205,25 +205,31 @@ showHistory :: Int -> Bool -> Debugger ()
 showHistory num showVars = do
     resumes <- GHC.getResumeContext
     case resumes of
-        [] -> printString debugOutput "# Not stopped at breakpoint"
+        [] -> printString "# Not stopped at breakpoint"
         (r:_) -> do
-            printString debugOutput "# Current history:"
+            printString "# Current history:"
             let hist = resumeHistory r
                 (took, rest) = splitAt num hist
             spans <- mapM GHC.getHistorySpan took
             let idx = map (0-) [(1::Int) ..]
-            mapM (\(i, s, h) -> printSDoc debugOutput $ Outputable.int i <+>
+            mapM (\(i, s, h) -> printSDoc $ Outputable.int i <+>
                         -- todo: get full path of the file
                         Outputable.text ":" <+>
                         (Outputable.text . head . GHC.historyEnclosingDecls) h <+>
                         (Outputable.parens . Outputable.ppr) s
                 ) (zip3 idx spans hist)
-            printString debugOutput $ if (null rest) then "# End of history" else "# End of visible history"
+            printString $ if (null rest) then "# End of history" else "# End of visible history"
+
+-- | ':back' command
+back = do
+    (names, i, pan) <- GHC.back
+    printString "# Available names"
+    printListOfOutputable names
+    printString "# Some int"
+    printSDoc $ Outputable.int i
+    printOutputable pan
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
-
-debugOutput :: Handle
-debugOutput = stdout
 
 -- |Test module file
 mainModulePath :: String
@@ -244,38 +250,39 @@ defaultHistSize = 20
 
 ---- || Utils || -------------------------------------------------------
 
--- |Prints SDoc to a given stream
-printSDoc :: Handle -> Outputable.SDoc -> Debugger ()
-printSDoc handle_ message = do
+-- | Prints SDoc to a given stream
+printSDoc :: Outputable.SDoc -> Debugger ()
+printSDoc message = do
+    st <- getDebugState
     dflags <- getDynFlags
     unqual <- getPrintUnqual
-    liftIO $ Outputable.printForUser dflags handle_ unqual message
+    liftIO $ Outputable.printForUser dflags (debugOutput st) unqual message
     return ()
 
--- |Prints Outputable to a given stream
-printOutputable :: (Outputable d) => Handle -> d -> Debugger ()
-printOutputable handle_ message = printSDoc handle_ $ Outputable.ppr message
+-- | Prints Outputable to a given stream
+printOutputable :: (Outputable d) => d -> Debugger ()
+printOutputable message = printSDoc $ Outputable.ppr message
 
-printListOfOutputable :: (Outputable d) => Handle -> [d] -> Debugger ()
-printListOfOutputable handle_ = mapM_ (printOutputable handle_)
+printListOfOutputable :: (Outputable d) => [d] -> Debugger ()
+printListOfOutputable = mapM_ printOutputable
 
--- |Prints String to a given stream
-printString :: Handle -> String -> Debugger ()
-printString handle_ message = printSDoc handle_ $ Outputable.text message
+-- | Prints String to a given stream
+printString :: String -> Debugger ()
+printString message = printSDoc $ Outputable.text message
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
 printAllBreaksInfo modName = do
     modBreaks <- getModBreaks modName
     -- modBreaks_flags - 0 if unset 1 if set
-    printString debugOutput "# modBreaks_flags:"
+    printString "# modBreaks_flags:"
     liftIO $ showBreakArray $ modBreaks_flags $ modBreaks
     -- modBreaks_locs - breakpoint index and SrcSpan
-    printString debugOutput "# modBreaks_locs:"
-    mapM (\(i, e) -> printString debugOutput (show i ++ " : " ++ show e)) $ assocs $ modBreaks_locs $ modBreaks
+    printString "# modBreaks_locs:"
+    mapM (\(i, e) -> printString (show i ++ " : " ++ show e)) $ assocs $ modBreaks_locs $ modBreaks
     -- modBreaks_decls - An array giving the names of the declarations enclosing each breakpoint
-    printString debugOutput "# modBreaks_decls:"
-    mapM (\(i, ds) -> printString debugOutput (show i ++ " : " ++ show ds)) $ assocs $ modBreaks_decls $ modBreaks
+    printString "# modBreaks_decls:"
+    mapM (\(i, ds) -> printString (show i ++ " : " ++ show ds)) $ assocs $ modBreaks_decls $ modBreaks
     return ()
 
 -- | parse and execute commands in list (to auto tests)
