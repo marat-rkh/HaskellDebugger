@@ -11,6 +11,7 @@ import Outputable (Outputable)
 import qualified Outputable
 
 import CommandParser (parse, debugCommand, DebugCommand(..))
+import DebuggerMonad
 
 import System.IO
 import Exception (throwIO)
@@ -24,14 +25,16 @@ main :: IO ()
 main = defaultRunGhc $ startCommandLine
 
 -- |Runs Ghc program with default settings
-defaultRunGhc :: Ghc a -> IO ()
-defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $ do
-    setupStandardContext
-    program
-    return ()
+defaultRunGhc :: Debugger a -> IO ()
+defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $
+    startDebugger (do
+        setupStandardContext
+        program
+        return ()
+    ) initState
 
 -- |Setup needed flags before running debug program
-setupContext :: GhcMonad m => String -> String -> m ()
+setupContext :: String -> String -> Debugger ()
 setupContext pathToModule nameOfModule = do
     dflags <- getSessionDynFlags
     setSessionDynFlags $ dflags { hscTarget = HscInterpreted
@@ -42,22 +45,22 @@ setupContext pathToModule nameOfModule = do
     setContext [IIModule $ mkModuleName nameOfModule]
 
 -- |In loop waits for commands and executes them
-startCommandLine :: GhcMonad m => m ()
+startCommandLine :: Debugger ()
 startCommandLine = whileNot (do {command <- getCommand stdin; runCommand command })
 
-whileNot :: (Monad m) => m Bool -> m ()
+whileNot :: Debugger Bool -> Debugger ()
 whileNot p = do
     x <- p
     if not x then whileNot p else return ()
 
 -- |Translates line from input stream into DebugCommand
-getCommand :: (GhcMonad m) => Handle -> m DebugCommand
+getCommand :: Handle -> Debugger DebugCommand
 getCommand handle = do
     line <- liftIO $ hGetLine handle
     return $ fst $ head $ parse debugCommand line
 
 -- |Runs DebugCommand and returns True iff debug is finished
-runCommand :: (GhcMonad m) => DebugCommand -> m (Bool)
+runCommand :: DebugCommand -> Debugger Bool
 runCommand (SetBreakpoint modName line) = setBreakpointFirstOfAvailable modName line >> return False
 runCommand (Trace command)                 = doTrace command >> return False
 runCommand Resume                          = doResume >> return False
@@ -66,7 +69,7 @@ runCommand Exit                            = return True
 runCommand _                               = printString debugOutput "# Unknown command" >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
-setBreakpointFirstOfAvailable :: (GhcMonad m) => String -> Int -> m ()
+setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
 setBreakpointFirstOfAvailable modName line = setBreakpoint modName line head
 
 -- | setBreakpoint version with selector taking breakpoint which covers the biggest part of source code
@@ -89,7 +92,7 @@ setBreakpointFirstOfAvailable modName line = setBreakpoint modName line head
 
 -- | finds all avaliable breakpoint for given line, then using selector takes one of them and activates it
 -- | if no breaks are avaliable proper message is shown
-setBreakpoint :: (GhcMonad m) => String -> Int -> ([(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)) -> m ()
+setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> (BreakIndex, SrcSpan)) -> Debugger ()
 setBreakpoint modName line selector = do
     breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
@@ -102,40 +105,40 @@ setBreakpoint modName line selector = do
                     printString debugOutput $ if res then "# Breakpoint was set here:\n" ++ show breakToSetSrcSpan else "# Breakpoint was not set"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: BreakIndex == line
-findBreaksForLine :: GhcMonad m => String -> Int -> m [(BreakIndex, SrcSpan)]
+findBreaksForLine :: String -> Int -> Debugger [(BreakIndex, SrcSpan)]
 findBreaksForLine modName line = filterBreaksLocations modName predLineEq
     where predLineEq = \(_, srcSpan) -> case srcSpan of UnhelpfulSpan _ -> False
                                                         RealSrcSpan r   -> line == (srcSpanStartLine r)
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies predicate
-filterBreaksLocations :: GhcMonad m => String -> ((BreakIndex, SrcSpan) -> Bool) -> m [(BreakIndex, SrcSpan)]
+filterBreaksLocations :: String -> ((BreakIndex, SrcSpan) -> Bool) -> Debugger [(BreakIndex, SrcSpan)]
 filterBreaksLocations modName predicate = do
     modBreaks <- getModBreaks modName
     let breaksLocations = assocs $ modBreaks_locs modBreaks
     return $ filter predicate breaksLocations
 
 -- | get ModBreaks for given modulename
-getModBreaks :: GhcMonad m => String -> m ModBreaks
+getModBreaks :: String -> Debugger ModBreaks
 getModBreaks modName = do
     module_ <- GHC.lookupModule (mkModuleName modName) Nothing
     Just modInfo <- getModuleInfo module_
     return $ modInfoModBreaks modInfo
 
 ---- | ':trace' command
-doTrace :: GhcMonad m => String -> m ()
+doTrace :: String -> Debugger ()
 doTrace []   = doContinue (const True) GHC.RunAndLogSteps
 doTrace expr = do
     runResult <- GHC.runStmt expr GHC.RunAndLogSteps
     afterRunStmt (const True) runResult
     return ()
 
-doContinue :: (GhcMonad m) => (SrcSpan -> Bool) -> SingleStep -> m ()
+doContinue :: (SrcSpan -> Bool) -> SingleStep -> Debugger ()
 doContinue canLogSpan step = do
     runResult <- GHC.resume canLogSpan step
     afterRunStmt canLogSpan runResult
     return ()
 
-afterRunStmt :: (GhcMonad m) => (SrcSpan -> Bool) -> GHC.RunResult -> m Bool
+afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> Debugger Bool
 afterRunStmt _ (GHC.RunException e) = liftIO $ throwIO e
 afterRunStmt canLogSpan runResult = do
     resumes <- GHC.getResumeContext
@@ -157,7 +160,7 @@ afterRunStmt canLogSpan runResult = do
                 afterRunStmt canLogSpan runReuslt
         _ -> return False
 
-doResume :: (GhcMonad m) => m ()
+doResume :: Debugger()
 doResume = doContinue (const True) GHC.RunToCompletion
 
 ---- |:step [<expr>] command - genegal step command
@@ -184,14 +187,14 @@ mainModuleName :: String
 mainModuleName = "Main"
 
 -- |Context for test file
-setupStandardContext :: GhcMonad m => m ()
+setupStandardContext :: Debugger ()
 setupStandardContext = setupContext mainModulePath mainModuleName
 
 
 ---- || Utils || -------------------------------------------------------
 
 -- |Prints SDoc to a given stream
-printSDoc :: GhcMonad m => Handle -> Outputable.SDoc -> m ()
+printSDoc :: Handle -> Outputable.SDoc -> Debugger ()
 printSDoc handle message = do
     dflags <- getDynFlags
     unqual <- getPrintUnqual
@@ -199,18 +202,18 @@ printSDoc handle message = do
     return ()
 
 -- |Prints Outputable to a given stream
-printOutputable :: (GhcMonad m, Outputable d) => Handle -> d -> m ()
+printOutputable :: (Outputable d) => Handle -> d -> Debugger ()
 printOutputable handle message = printSDoc handle $ Outputable.ppr message
 
-printListOfOutputable :: (GhcMonad m, Outputable d) => Handle -> [d] -> m ()
+printListOfOutputable :: (Outputable d) => Handle -> [d] -> Debugger ()
 printListOfOutputable handle = mapM_ (printOutputable handle)
 
 -- |Prints String to a given stream
-printString :: (GhcMonad m) => Handle -> String -> m ()
+printString :: Handle -> String -> Debugger ()
 printString handle message = printSDoc handle $ Outputable.text message
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
-printAllBreaksInfo :: GhcMonad m => String -> m ()
+printAllBreaksInfo :: String -> Debugger ()
 printAllBreaksInfo modName = do
     modBreaks <- getModBreaks modName
     -- modBreaks_flags - 0 if unset 1 if set
@@ -226,7 +229,7 @@ printAllBreaksInfo modName = do
 
 -- | parse and execute commands in list (to auto tests)
 -- | exapmle: main = defaultRunGhc $ execCommands [":trace main", ":q"] - load default module, make trace and exit
-execCommands :: GhcMonad m => [String] -> m ()
+execCommands :: [String] -> Debugger ()
 execCommands []       = return ()
 execCommands (c : cs) = do
     runCommand $ fst $ head $ parse debugCommand c
