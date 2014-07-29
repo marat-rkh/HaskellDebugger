@@ -41,8 +41,18 @@ import qualified Data.Ratio
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
-main :: IO ()
-main = defaultRunGhc $ startCommandLine
+tryRun :: Debugger a -> Debugger (Maybe a)
+tryRun func = do {
+    result <- func;
+    return $ Just result;
+} `gcatch` (\ex -> do {
+    printJSON [
+            ("info", ConsStr "exception"),
+            ("message", ConsStr $ show (ex::SomeException))
+        ];
+    return Nothing;
+})
+
 
 -- |Runs Ghc program with default settings
 defaultRunGhc :: Debugger a -> IO ()
@@ -93,27 +103,27 @@ initDebugOutput = do
                 port = toEnum port'
             sock <- liftIO $ socket AF_INET Stream 0
             addrs <- liftIO $ liftM hostAddresses $ getHostByName host
-            m_exception <- liftIO $ do {
-                connect sock $ SockAddrInet port (head addrs);
-                return Nothing;
-            } `catch` (return . Just)
-            case m_exception of
-                Nothing -> do
-                    handle <- liftIO $ socketToHandle sock ReadWriteMode
-                    modifyDebugState $ \st -> st{debugOutput = handle}
-                    printJSON [
-                            ("info", ConsStr "connected to port"),
-                            ("port", ConsInt port')
-                        ]
-                Just ex -> do
-                    printJSON [
-                            ("info", ConsStr "exception"),
-                            ("message", ConsStr $ show (ex::SomeException) ++ "; using stdout for debug output")
-                        ]
+            do {
+                liftIO $ connect sock $ SockAddrInet port (head addrs);
+                handle <- liftIO $ socketToHandle sock ReadWriteMode;
+                modifyDebugState $ \st -> st{debugOutput = handle};
+                printJSON [
+                        ("info", ConsStr "connected to port"),
+                        ("port", ConsInt port')
+                    ];
+            } `gcatch` (\ex -> printJSON [
+                        ("info", ConsStr "exception"),
+                        ("message", ConsStr $ show (ex::SomeException) ++ "; using stdout for debug output")
+                    ])
 
 -- |In loop waits for commands and executes them
 startCommandLine :: Debugger ()
-startCommandLine = whileNot (do {command <- getCommand stdin; runCommand command })
+startCommandLine = whileNot $ do
+    command <- getCommand stdin
+    m_result <- tryRun (runCommand command)
+    case m_result of
+        Just result -> return result
+        Nothing -> return False
 
 whileNot :: Debugger Bool -> Debugger ()
 whileNot p = do
