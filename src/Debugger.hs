@@ -79,7 +79,7 @@ setupContext pathToModule nameOfModule = do
 handleArguments :: Debugger ()
 handleArguments = do
     args <- liftIO getArgs
-    handle' (head args) where
+    mapM_ handle' args where
         handle' x = do
             let arg = fst $ head $ parse cmdArgument x
             case arg of
