@@ -21,4 +21,5 @@ executable HaskellDebugger
                         ghc,
                         ghc-paths,
                         array,
-                        network
+                        network,
+                        json

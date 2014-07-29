@@ -33,6 +33,12 @@ import SrcLoc (realSrcSpanEnd)
 import Control.Exception
 import System.IO.Error
 
+import Text.JSON
+import Data.Data
+import Data.Dynamic
+import Data.Maybe
+import qualified Data.Ratio
+
 ---- || Debugger runner || --------------------------------------------------------------------------
 
 main :: IO ()
@@ -68,14 +74,20 @@ handleArguments = do
             let arg = fst $ head $ parse cmdArgument x
             case arg of
                 SetPort p -> do modifyDebugState $ \st -> st{port = Just p}
-                CmdArgsParser.Unknown s -> printString $ "# Unknown argument: " ++ s
+                CmdArgsParser.Unknown s -> printJSON [
+                        ("info", ConsStr "warning"),
+                        ("message", ConsStr $ "unknown argument: " ++ s)
+                    ]
 
 initDebugOutput :: Debugger ()
 initDebugOutput = do
     st <- getDebugState
     let m_port = port st
     case m_port of
-        Nothing -> printString "# Port for debug stream was not set (using stdout); use command line argument -p<port> to set it"
+        Nothing -> printJSON [
+                ("info", ConsStr "warning"),
+                ("message", ConsStr "Port for debug stream was not set (using stdout); use command line argument -p<port> to set it")
+            ]
         Just port' -> do
             let host = "localhost"
                 port = toEnum port'
@@ -89,10 +101,15 @@ initDebugOutput = do
                 Nothing -> do
                     handle <- liftIO $ socketToHandle sock ReadWriteMode
                     modifyDebugState $ \st -> st{debugOutput = handle}
-                    printString $ "# Connected to port " ++ show port
+                    printJSON [
+                            ("info", ConsStr "connected to port"),
+                            ("port", ConsInt port')
+                        ]
                 Just ex -> do
-                    printString $ "# Exception: " ++ show (ex::SomeException)
-                    printString $ "# Using stdout for debug output"
+                    printJSON [
+                            ("info", ConsStr "exception"),
+                            ("message", ConsStr $ show (ex::SomeException) ++ "; using stdout for debug output")
+                        ]
 
 -- |In loop waits for commands and executes them
 startCommandLine :: Debugger ()
@@ -119,7 +136,10 @@ runCommand StepInto                       = doStepInto >> return False
 runCommand StepOver                       = doStepLocal >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
-runCommand _                              = printString "# Unknown command" >> return False
+runCommand _                              = printJSON [
+                                                ("info", ConsStr "exception"),
+                                                ("message", ConsStr "unknown command")
+                                            ] >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
@@ -148,15 +168,30 @@ setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> Maybe (BreakIndex,
 setBreakpoint modName line selector = do
     breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
-        []           -> printString "# Breakpoints are not allowed for this line"
+        []           -> printJSON [
+                                ("info", ConsStr "breakpoint was not set"),
+                                ("add_info", ConsStr "not allowed here")
+                            ]
         bbs@(b : bs) -> do
             let mbBreakToSet = if (null bs) then Just b else selector bbs
             case mbBreakToSet of
                 Just (breakIndex, srcSpan) -> do
                     res <- changeBreakFlagInModBreaks modName breakIndex True
-                    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
-                              else "# Breakpoint was not set: setBreakOn returned False"
-                    printString msg
+--                    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
+--                              else "# Breakpoint was not set: setBreakOn returned False"
+                    if res
+                        then do
+                            position <- outToStr srcSpan
+                            printJSON [
+                                    ("info", ConsStr "breakpoint was set"),
+                                    ("index", ConsInt $ breakIndex),
+                                    ("position", ConsStr $ position)
+                                ]
+                        else printJSON [
+                                     ("info", ConsStr "breakpoint was not set"),
+                                     ("add_info", ConsStr "selector returned Nothing")
+                                 ]
+--                    printString msg
                 Nothing -> printString "# Breakpoint was not set: selector returned Nothing"
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: srcSpanStartLine == line
@@ -203,9 +238,15 @@ setBreakFlag bArr ind flag | flag      = setBreakOn bArr ind
 deleteBreakpoint ::  String -> Int -> Debugger ()
 deleteBreakpoint modName breakIndex = do
     res <- changeBreakFlagInModBreaks modName breakIndex False
-    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was removed"
-              else "# Breakpoint was not removed: incorrect index"
-    printString msg
+    if res
+        then printJSON [
+                ("info", ConsStr "breakpoint was removed"),
+                ("index", ConsInt breakIndex)
+            ]
+        else printJSON [
+                ("info", ConsStr "breakpoint was not removed"),
+                ("add_info", ConsStr "incorrect index")
+            ]
 
 -- | ':trace' command
 doTrace :: String -> Debugger ()
@@ -227,16 +268,21 @@ afterRunStmt canLogSpan runResult = do
     resumes <- GHC.getResumeContext
     case runResult of
         GHC.RunOk names -> do
-            printString "# Trace finished"
-            printString "# Observable names:"
-            printListOfOutputable names
+            names_str <- mapM outToStr names
+            printJSON [
+                    ("info", ConsStr "finished"),
+                    ("names", ConsArr $ map ConsStr names_str)
+                ]
             return True
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
-                printString "# Stopped at"
-                printOutputable (GHC.resumeSpan $ head resumes)
-                printString "# Observable names:"
-                printListOfOutputable names
+                names_str <- mapM outToStr names
+                position <- outToStr $ GHC.resumeSpan $ head resumes
+                printJSON [
+                        ("info", ConsStr "paused"),
+                        ("position", ConsStr position),
+                        ("names", ConsArr $ map ConsStr names_str)
+                    ]
                 return False
             | otherwise -> do
                 nextRunResult <- GHC.resume canLogSpan GHC.SingleStep
@@ -266,7 +312,10 @@ doStepLocal = do
             Just module_ <- getCurrentBreakModule
             mbCurrentToplevelDecl <- enclosingSpan module_ srcSpan
             case mbCurrentToplevelDecl of
-                Nothing -> printString "# Warning - steplocal was not performed: enclosingSpan returned Nothing"
+                Nothing -> printJSON [
+                        ("info", ConsStr "warning"),
+                        ("message", ConsStr "steplocal was not performed: enclosingSpan returned Nothing")
+                    ]
                 Just currentToplevelDecl -> doContinue (`isSubspanOf` currentToplevelDecl) GHC.SingleStep
 
 -- | Returns the largest SrcSpan containing the given one or Nothing
@@ -316,20 +365,24 @@ showHistory :: Int -> Bool -> Debugger ()
 showHistory num showVars = do
     resumes <- GHC.getResumeContext
     case resumes of
-        [] -> printString "# Not stopped at breakpoint"
+        [] -> printJSON [("info", ConsStr "not stopped at breakpoint")]
         (r:_) -> do
-            printString "# Current history:"
             let hist = resumeHistory r
                 (took, rest) = splitAt num hist
-            spans' <- mapM GHC.getHistorySpan took
+            spans' <- mapM (GHC.getHistorySpan) took
+            spans'' <- mapM outToStr spans'
             let idx = map (0-) [(1::Int) ..]
-            mapM (\(i, s, h) -> printSDoc $ Outputable.int i <+>
-                        -- todo: get full path of the file
-                        Outputable.text ":" <+>
-                        (Outputable.text . head . GHC.historyEnclosingDecls) h <+>
-                        (Outputable.parens . Outputable.ppr) s
-                ) (zip3 idx spans' hist)
-            printString $ if (null rest) then "# End of history" else "# End of visible history"
+                -- todo: get full path of the file
+                lines = map (\(i, s, h) -> ConsObj [
+                        ("index", ConsInt i),
+                        ("function", (ConsStr . head . GHC.historyEnclosingDecls) h),
+                        ("position", ConsStr s)
+                    ]) (zip3 idx spans'' hist)
+            printJSON [
+                    ("info", ConsStr "got history"),
+                    ("history", ConsArr lines),
+                    ("end_reached", ConsBool (null rest))
+                ]
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
 
@@ -363,14 +416,22 @@ printSDoc message = do
 
 -- | Prints Outputable to the debug stream
 printOutputable :: (Outputable d) => d -> Debugger ()
-printOutputable message = printSDoc $ Outputable.ppr message
+printOutputable = printSDoc . Outputable.ppr
 
 printListOfOutputable :: (Outputable d) => [d] -> Debugger ()
 printListOfOutputable = mapM_ printOutputable
 
 -- | Prints String to the debug stream
 printString :: String -> Debugger ()
-printString message = printSDoc $ Outputable.text message
+printString = printSDoc . Outputable.text
+
+printJSON :: [(String, T)] -> Debugger ()
+printJSON = printString . getJSONLine
+
+outToStr :: (Outputable d) => d -> Debugger String
+outToStr str = do
+    flags <- getDynFlags
+    return $ Outputable.showSDoc flags $ Outputable.ppr str
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
@@ -394,3 +455,32 @@ execCommands []       = return ()
 execCommands (c : cs) = do
     runCommand $ fst $ head $ parse debugCommand c
     execCommands cs
+
+
+data T
+    = ConsBool Bool
+    | ConsInt Int
+    | ConsStr String
+    | ConsArr [T]
+    | ConsObj [(String, T)]
+
+instance JSON T where
+    readJSON _ = Error "Not implemented"    -- function is not needed
+--    readJSON (JSRational b x) = if Data.Ratio.denominator x == 1 then Ok (ConsInt $ Data.Ratio.numerator x) else Error "Non-integer number"
+--    readJSON (JSString x) = Ok (ConsStr $ fromJSString x)
+--    readJSON (JSArray []) = Ok (ConsArr [])
+--    readJSON (JSArray (x:xs)) = conc (readJSON x) (readJSON (JSArray xs)) where
+--        conc a b = case a of
+--            Error er -> Error er
+--            Ok ok -> case b of
+--                Error er -> Error er
+--                Ok (ConsArr oks) -> Ok $ ConsArr (ok:oks)
+    showJSON (ConsBool x) = JSBool x
+    showJSON (ConsInt x) = JSRational False ((toInteger x) Data.Ratio.% 1)
+    showJSON (ConsStr x) = JSString $ toJSString x
+    showJSON (ConsArr x) = JSArray $ map showJSON x
+    showJSON (ConsObj x) = JSObject $ toJSObject $ map (\(key, value) -> (key, showJSON value)) x
+
+
+getJSONLine :: [(String, T)] -> String
+getJSONLine = encode . toJSObject
