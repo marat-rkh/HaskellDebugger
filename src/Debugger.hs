@@ -30,6 +30,9 @@ import Data.Array
 import Data.Function (on)
 import SrcLoc (realSrcSpanEnd)
 
+import Control.Exception
+import System.IO.Error
+
 ---- || Debugger runner || --------------------------------------------------------------------------
 
 main :: IO ()
@@ -78,10 +81,18 @@ initDebugOutput = do
                 port = toEnum port'
             sock <- liftIO $ socket AF_INET Stream 0
             addrs <- liftIO $ liftM hostAddresses $ getHostByName host
-            liftIO $ connect sock $ SockAddrInet port (head addrs)
-            handle <- liftIO $ socketToHandle sock ReadWriteMode
-            printString $ "# Connected to " ++ show port
-            setDebugState st{debugOutput = handle}
+            m_exception <- liftIO $ do {
+                connect sock $ SockAddrInet port (head addrs);
+                return Nothing;
+            } `catch` (return . Just)
+            case m_exception of
+                Nothing -> do
+                    handle <- liftIO $ socketToHandle sock ReadWriteMode
+                    modifyDebugState $ \st -> st{debugOutput = handle}
+                    printString $ "# Connected to port " ++ show port
+                Just ex -> do
+                    printString $ "# Exception: " ++ show (ex::SomeException)
+                    printString $ "# Using stdout for debug output"
 
 -- |In loop waits for commands and executes them
 startCommandLine :: Debugger ()
