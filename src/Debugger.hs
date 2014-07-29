@@ -60,11 +60,11 @@ setupContext pathToModule nameOfModule = do
 handleArguments :: Debugger ()
 handleArguments = do
     args <- liftIO getArgs
-    mapM_ handle' args where
+    handle' (head args) where
         handle' x = do
             let arg = fst $ head $ parse cmdArgument x
             case arg of
-                SetPort p -> modifyDebugState $ \st -> st{port = Just p}
+                SetPort p -> do modifyDebugState $ \st -> st{port = Just p}
                 CmdArgsParser.Unknown s -> printString $ "# Unknown argument: " ++ s
 
 initDebugOutput :: Debugger ()
@@ -80,6 +80,7 @@ initDebugOutput = do
             addrs <- liftIO $ liftM hostAddresses $ getHostByName host
             liftIO $ connect sock $ SockAddrInet port (head addrs)
             handle <- liftIO $ socketToHandle sock ReadWriteMode
+            printString $ "# Connected to " ++ show port
             setDebugState st{debugOutput = handle}
 
 -- |In loop waits for commands and executes them

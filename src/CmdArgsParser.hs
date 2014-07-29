@@ -5,13 +5,14 @@ import ParserMonad
 data Argument
     = SetPort Int
     | Unknown String
+        deriving Show
 
 cmdArgument :: Parser Argument
 setPortArgument :: Parser Argument
 unknownArgument :: Parser Argument
 
 cmdArgument = unlist [
-        cmdArgument,
+        setPortArgument,
         unknownArgument
     ]
 
