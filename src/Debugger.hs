@@ -73,7 +73,7 @@ runCommand StepInto                       = doStepInto >> return False
 runCommand StepOver                       = doStepLocal >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
-runCommand _                              = printString debugOutput "# Unknown command" >> return False
+runCommand _                              = printString "# Unknown command" >> return False
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
 setBreakpointFirstOfAvailable :: String -> Int -> Debugger ()
@@ -220,7 +220,7 @@ doStepLocal = do
             Just module_ <- getCurrentBreakModule
             mbCurrentToplevelDecl <- enclosingSpan module_ srcSpan
             case mbCurrentToplevelDecl of
-                Nothing -> printString debugOutput "# Warning - steplocal was not performed: enclosingSpan returned Nothing"
+                Nothing -> printString "# Warning - steplocal was not performed: enclosingSpan returned Nothing"
                 Just currentToplevelDecl -> doContinue (`isSubspanOf` currentToplevelDecl) GHC.SingleStep
 
 -- | Returns the largest SrcSpan containing the given one or Nothing
@@ -275,14 +275,14 @@ showHistory num showVars = do
             printString "# Current history:"
             let hist = resumeHistory r
                 (took, rest) = splitAt num hist
-            spans <- mapM GHC.getHistorySpan took
+            spans' <- mapM GHC.getHistorySpan took
             let idx = map (0-) [(1::Int) ..]
             mapM (\(i, s, h) -> printSDoc $ Outputable.int i <+>
                         -- todo: get full path of the file
                         Outputable.text ":" <+>
                         (Outputable.text . head . GHC.historyEnclosingDecls) h <+>
                         (Outputable.parens . Outputable.ppr) s
-                ) (zip3 idx spans hist)
+                ) (zip3 idx spans' hist)
             printString $ if (null rest) then "# End of history" else "# End of visible history"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
@@ -306,7 +306,7 @@ defaultHistSize = 20
 
 ---- || Utils || -------------------------------------------------------
 
--- | Prints SDoc to a given stream
+-- | Prints SDoc to the debug stream
 printSDoc :: Outputable.SDoc -> Debugger ()
 printSDoc message = do
     st <- getDebugState
@@ -315,20 +315,16 @@ printSDoc message = do
     liftIO $ Outputable.printForUser dflags (debugOutput st) unqual message
     return ()
 
--- | Prints Outputable to a given stream
+-- | Prints Outputable to the debug stream
 printOutputable :: (Outputable d) => d -> Debugger ()
 printOutputable message = printSDoc $ Outputable.ppr message
 
 printListOfOutputable :: (Outputable d) => [d] -> Debugger ()
 printListOfOutputable = mapM_ printOutputable
 
--- | Prints String to a given stream
+-- | Prints String to the debug stream
 printString :: String -> Debugger ()
 printString message = printSDoc $ Outputable.text message
-
--- | printString version with handle_ = debugOutput
-printStrDbg :: String -> Debugger ()
-printStrDbg = printString debugOutput
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
