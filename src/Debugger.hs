@@ -10,10 +10,17 @@ import GhcMonad (liftIO)
 import Outputable (Outputable, (<+>))
 import qualified Outputable
 
-import CommandParser (parse, debugCommand, DebugCommand(..))
+import ParserMonad (parse)
+import CommandParser (debugCommand, DebugCommand(..))
+import CmdArgsParser (cmdArgument, Argument(..))
 import DebuggerMonad
 
+import Network.Socket
+import Network.BSD
+import Control.Concurrent
+
 import System.IO
+import System.Environment (getArgs)
 import Exception (throwIO)
 import Data.Maybe (isNothing, listToMaybe)
 import Control.Monad (mplus, liftM)
@@ -33,6 +40,8 @@ defaultRunGhc :: Debugger a -> IO ()
 defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $
     startDebugger (do
         setupStandardContext
+        handleArguments
+        initDebugOutput
         program
         return ()
     ) initState
@@ -47,6 +56,31 @@ setupContext pathToModule nameOfModule = do
     setTargets =<< sequence [guessTarget pathToModule Nothing]
     GHC.load LoadAllTargets
     setContext [IIModule $ mkModuleName nameOfModule]
+
+handleArguments :: Debugger ()
+handleArguments = do
+    args <- liftIO getArgs
+    mapM_ handle' args where
+        handle' x = do
+            let arg = fst $ head $ parse cmdArgument x
+            case arg of
+                SetPort p -> modifyDebugState $ \st -> st{port = Just p}
+                CmdArgsParser.Unknown s -> printString $ "# Unknown argument: " ++ s
+
+initDebugOutput :: Debugger ()
+initDebugOutput = do
+    st <- getDebugState
+    let m_port = port st
+    case m_port of
+        Nothing -> printString "# Port for debug stream was not set (using stdout); use command line argument -p<port> to set it"
+        Just port' -> do
+            let host = "localhost"
+                port = toEnum port'
+            sock <- liftIO $ socket AF_INET Stream 0
+            addrs <- liftIO $ liftM hostAddresses $ getHostByName host
+            liftIO $ connect sock $ SockAddrInet port (head addrs)
+            handle <- liftIO $ socketToHandle sock ReadWriteMode
+            setDebugState st{debugOutput = handle}
 
 -- |In loop waits for commands and executes them
 startCommandLine :: Debugger ()

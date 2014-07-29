@@ -13,13 +13,15 @@ import System.IO
 
 data DebugState = DebugState {
     breaks :: [(Int, Module, Int)], -- number, module, line
+    port :: Maybe Int,
     debugOutput :: Handle
 }
 
 initState :: DebugState
 initState = DebugState {
     breaks = [],
-    debugOutput = stdout -- temporary handle for testing
+    port = Nothing,
+    debugOutput = stdout
 }
 
 newtype Debugger a = Debugger {toGhc :: IORef DebugState -> Ghc a}

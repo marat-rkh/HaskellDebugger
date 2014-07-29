@@ -20,4 +20,5 @@ executable HaskellDebugger
     build-depends:      base,
                         ghc,
                         ghc-paths,
-                        array
+                        array,
+                        network
