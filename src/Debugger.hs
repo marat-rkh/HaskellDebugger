@@ -27,7 +27,7 @@ import Data.Array
 import Data.Function (on)
 import SrcLoc (realSrcSpanEnd)
 
-import Control.Exception
+import Control.Exception (SomeException, throwIO)
 
 import Text.JSON
 import Data.Maybe
@@ -96,13 +96,12 @@ initDebugOutput = do
             ]
         Just port' -> do
             let host = "localhost"
-                port = toEnum port'
             sock <- liftIO $ socket AF_INET Stream 0
             addrs <- liftIO $ liftM hostAddresses $ getHostByName host
             do {
-                liftIO $ connect sock $ SockAddrInet port (head addrs);
+                liftIO $ connect sock $ SockAddrInet (toEnum port') (head addrs);
                 handle <- liftIO $ socketToHandle sock ReadWriteMode;
-                modifyDebugState $ \st -> st{debugOutput = handle};
+                modifyDebugState $ \st' -> st'{debugOutput = handle};
                 printJSON [
                         ("info", ConsStr "connected to port"),
                         ("port", ConsInt port')
@@ -301,7 +300,7 @@ doResume = doContinue (const True) GHC.RunToCompletion
 -- |':step [<expr>]' command - general step command
 doStepGeneral :: String -> Debugger ()
 doStepGeneral []   = doContinue (const True) GHC.SingleStep
-doStepGeneral expr = printJSON [
+doStepGeneral _ = printJSON [
          ("info", ConsStr "exception"),
          ("message", ConsStr "not implemented yet")
      ]
@@ -370,7 +369,7 @@ getCurrentBreakModule = do
 
 -- | ':history' command
 showHistory :: Int -> Bool -> Debugger ()
-showHistory num showVars = do
+showHistory num _ = do
     resumes <- GHC.getResumeContext
     case resumes of
         [] -> printJSON [("info", ConsStr "not stopped at breakpoint")]
@@ -380,14 +379,14 @@ showHistory num showVars = do
             spans' <- mapM (GHC.getHistorySpan) took
             let idx = map (0-) [(1::Int) ..]
                 -- todo: get full path of the file
-                lines = map (\(i, s, h) -> ConsObj [
+                lines' = map (\(i, s, h) -> ConsObj [
                         ("index", ConsInt i),
                         ("function", (ConsStr . head . GHC.historyEnclosingDecls) h),
                         ("position", srcSpanAsJSON s)
                     ]) (zip3 idx spans' hist)
             printJSON [
                     ("info", ConsStr "got history"),
-                    ("history", ConsArr lines),
+                    ("history", ConsArr lines'),
                     ("end_reached", ConsBool (null rest))
                 ]
 
