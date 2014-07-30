@@ -139,7 +139,7 @@ runCommand (Trace command)                = doTrace command >> return False
 runCommand Resume                         = doResume >> return False
 runCommand StepInto                       = doStepInto >> return False
 runCommand StepOver                       = doStepLocal >> return False
-runCommand History                        = showHistory defaultHistSize True >> return False
+runCommand History                        = showHistory defaultHistSize >> return False
 runCommand Exit                           = return True
 runCommand (BreakList modName)            = showBreaks modName >> return False
 runCommand _                              = printJSON [
@@ -368,8 +368,8 @@ getCurrentBreakModule = do
                 return $ Just $ GHC.getHistoryModule  hist
 
 -- | ':history' command
-showHistory :: Int -> Bool -> Debugger ()
-showHistory num _ = do
+showHistory :: Int -> Debugger ()
+showHistory num = do
     resumes <- GHC.getResumeContext
     case resumes of
         [] -> printJSON [("info", ConsStr "not stopped at breakpoint")]
