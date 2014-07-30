@@ -16,6 +16,9 @@ data DebugCommand
     | BreakList String            -- module
     | Exit
     | Help
+    | Print String                -- name of binding
+    | SPrint String               -- name of binding
+    | Force String                -- expr
     | Unknown
         deriving Show
 
@@ -30,6 +33,9 @@ trace :: Parser DebugCommand
 breaklist :: Parser DebugCommand
 exit :: Parser DebugCommand
 help :: Parser DebugCommand
+printName :: Parser DebugCommand
+sprintName :: Parser DebugCommand
+force :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -43,6 +49,9 @@ debugCommand = unlist [
                         breaklist,
                         exit,
                         help,
+                        printName,
+                        sprintName,
+                        force,
                         unknown
                       ]
 
@@ -115,6 +124,28 @@ help = do
     skipSpaces
     end
     return Help
+
+printName = do
+    string ":print"
+    waitAndSkipSpaces
+    name <- restSatisfiedChars (not . isSpace)
+    skipSpaces
+    end
+    return $ Print name
+
+sprintName = do
+    string ":sprint"
+    waitAndSkipSpaces
+    name <- restSatisfiedChars (not . isSpace)
+    skipSpaces
+    end
+    return $ SPrint name
+
+force = do
+    string ":force"
+    waitAndSkipSpaces
+    expr <- restOfInput
+    return $ Force expr
 
 unknown = do
     restOfInput

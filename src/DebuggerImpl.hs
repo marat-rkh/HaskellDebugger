@@ -30,7 +30,7 @@ import Control.Exception (SomeException, throwIO)
 import Data.Maybe
 import DebuggerUtils
 
---import Debugger as Ddd (pprintClosureCommand)
+import Debugger (pprintClosureCommand)
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -141,6 +141,9 @@ runCommand History                        = showHistory defaultHistSize >> retur
 runCommand Exit                           = return True
 runCommand (BreakList modName)            = showBreaks modName >> return False
 runCommand Help                           = printString fullHelpText >> return False
+runCommand (Print name)                   = doPrint name >> return False
+runCommand (SPrint name)                  = doSPrint name >> return False
+runCommand (Force expr)                   = doForce expr >> return False
 runCommand _                              = printJSON [
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -413,6 +416,12 @@ showBreaks modName = do
         ]
     return ()
 
+-- | ':print', ':sprint' and ':force' commands
+doPrint, doSPrint, doForce :: String -> DebuggerMonad ()
+doPrint  = pprintClosureCommand True False
+doSPrint = pprintClosureCommand False False
+doForce  = pprintClosureCommand False True
+
 fullHelpText :: String
 fullHelpText =
     " Commands available from the prompt:\n" ++
@@ -422,7 +431,10 @@ fullHelpText =
     "   :breaklist <mod>            show all available breakpoints (index and span) for module <mod>\n" ++
     "   :continue                   resume after a breakpoint\n" ++
     "   :delete <mod> <ind>         delete the breakpoint with index <ind> from module <mod>\n" ++
+    "   :force <expr>               print <expr>, forcing unevaluated parts\n" ++
     "   :history                    after :trace, show the execution history\n" ++
+    "   :print <name>               prints a value without forcing its computation\n" ++
+    "   :sprint <name>              simplifed version of :print\n" ++
     "   :step                       single-step after stopping at a breakpoint\n"++
     "   :steplocal                  single-step within the current top-level binding\n"++
     "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n"++
