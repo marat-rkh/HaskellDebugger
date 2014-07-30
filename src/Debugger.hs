@@ -7,7 +7,7 @@ import qualified GHC (resume)
 import GHC.Paths ( libdir )
 import DynFlags
 import GhcMonad (liftIO)
-import Outputable (Outputable, (<+>))
+import Outputable (Outputable)
 import qualified Outputable
 
 import ParserMonad (parse)
@@ -17,12 +17,9 @@ import DebuggerMonad
 
 import Network.Socket
 import Network.BSD
-import Control.Concurrent
 
 import System.IO
 import System.Environment (getArgs)
-import Exception (throwIO)
-import Data.Maybe (isNothing, listToMaybe)
 import Control.Monad (mplus, liftM)
 import Data.List (partition, sortBy)
 import BreakArray
@@ -31,13 +28,11 @@ import Data.Function (on)
 import SrcLoc (realSrcSpanEnd)
 
 import Control.Exception
-import System.IO.Error
 
 import Text.JSON
-import Data.Data
-import Data.Dynamic
 import Data.Maybe
 import qualified Data.Ratio
+import qualified FastString
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -71,6 +66,7 @@ setupContext pathToModule nameOfModule = do
     dflags <- getSessionDynFlags
     setSessionDynFlags $ dflags { hscTarget = HscInterpreted
                                 , ghcLink   = LinkInMemory
+                                , ghcMode   = CompManager
                                 }
     setTargets =<< sequence [guessTarget pathToModule Nothing]
     GHC.load LoadAllTargets
@@ -190,17 +186,15 @@ setBreakpoint modName line selector = do
 --                    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
 --                              else "# Breakpoint was not set: setBreakOn returned False"
                     if res
-                        then do
-                            position <- outToStr srcSpan
-                            printJSON [
-                                    ("info", ConsStr "breakpoint was set"),
-                                    ("index", ConsInt $ breakIndex),
-                                    ("position", ConsStr $ position)
-                                ]
+                        then printJSON [
+                                ("info", ConsStr "breakpoint was set"),
+                                ("index", ConsInt $ breakIndex),
+                                ("src_span", srcSpanAsJSON srcSpan)
+                            ]
                         else printJSON [
-                                     ("info", ConsStr "breakpoint was not set"),
-                                     ("add_info", ConsStr "selector returned Nothing")
-                                 ]
+                                 ("info", ConsStr "breakpoint was not set"),
+                                 ("add_info", ConsStr "selector returned Nothing")
+                             ]
 --                    printString msg
                 Nothing -> printString "# Breakpoint was not set: selector returned Nothing"
 
@@ -287,10 +281,10 @@ afterRunStmt canLogSpan runResult = do
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 names_str <- mapM outToStr names
-                position <- outToStr $ GHC.resumeSpan $ head resumes
+                let srcSpan = GHC.resumeSpan $ head resumes
                 printJSON [
                         ("info", ConsStr "paused"),
-                        ("position", ConsStr position),
+                        ("src_span", srcSpanAsJSON srcSpan),
                         ("names", ConsArr $ map ConsStr names_str)
                     ]
                 return False
@@ -306,7 +300,10 @@ doResume = doContinue (const True) GHC.RunToCompletion
 -- |':step [<expr>]' command - general step command
 doStepGeneral :: String -> Debugger ()
 doStepGeneral []   = doContinue (const True) GHC.SingleStep
-doStepGeneral expr = printString "':step <expr>' is not implemented yet"
+doStepGeneral expr = printJSON [
+         ("info", ConsStr "exception"),
+         ("message", ConsStr "not implemented yet")
+     ]
 
 -- |':step' command
 doStepInto :: Debugger ()
@@ -380,14 +377,13 @@ showHistory num showVars = do
             let hist = resumeHistory r
                 (took, rest) = splitAt num hist
             spans' <- mapM (GHC.getHistorySpan) took
-            spans'' <- mapM outToStr spans'
             let idx = map (0-) [(1::Int) ..]
                 -- todo: get full path of the file
                 lines = map (\(i, s, h) -> ConsObj [
                         ("index", ConsInt i),
                         ("function", (ConsStr . head . GHC.historyEnclosingDecls) h),
-                        ("position", ConsStr s)
-                    ]) (zip3 idx spans'' hist)
+                        ("position", srcSpanAsJSON s)
+                    ]) (zip3 idx spans' hist)
             printJSON [
                     ("info", ConsStr "got history"),
                     ("history", ConsArr lines),
@@ -440,8 +436,8 @@ printJSON = printString . getJSONLine
 
 outToStr :: (Outputable d) => d -> Debugger String
 outToStr str = do
-    flags <- getDynFlags
-    return $ Outputable.showSDoc flags $ Outputable.ppr str
+    dflags <- getDynFlags
+    return $ Outputable.showSDoc dflags $ Outputable.ppr str
 
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
@@ -494,3 +490,14 @@ instance JSON T where
 
 getJSONLine :: [(String, T)] -> String
 getJSONLine = encode . toJSObject
+
+-- | Used methods are marked as 'unsafe'
+srcSpanAsJSON :: SrcSpan -> T
+srcSpanAsJSON (UnhelpfulSpan str) = ConsObj [("span", ConsStr $ FastString.unpackFS str)]
+srcSpanAsJSON (RealSrcSpan span') = ConsObj [
+        ("file", ConsStr $ FastString.unpackFS $ srcSpanFile span'),
+        ("startline", ConsInt $ srcSpanStartLine span'),
+        ("endline", ConsInt $ srcSpanEndLine span'),
+        ("startlcol", ConsInt $ srcSpanStartCol span'),
+        ("endcol", ConsInt $ srcSpanEndCol span')
+    ]
