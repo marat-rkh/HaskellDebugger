@@ -14,7 +14,7 @@ import Text.JSON
 import qualified Data.Ratio
 
 -- | Prints SDoc to the debug stream
-printSDoc :: Outputable.SDoc -> Debugger ()
+printSDoc :: Outputable.SDoc -> DebuggerMonad ()
 printSDoc message = do
     st <- getDebugState
     dflags <- getDynFlags
@@ -23,20 +23,20 @@ printSDoc message = do
     return ()
 
 -- | Prints Outputable to the debug stream
-printOutputable :: (Outputable d) => d -> Debugger ()
+printOutputable :: (Outputable d) => d -> DebuggerMonad ()
 printOutputable = printSDoc . Outputable.ppr
 
-printListOfOutputable :: (Outputable d) => [d] -> Debugger ()
+printListOfOutputable :: (Outputable d) => [d] -> DebuggerMonad ()
 printListOfOutputable = mapM_ printOutputable
 
 -- | Prints String to the debug stream
-printString :: String -> Debugger ()
+printString :: String -> DebuggerMonad ()
 printString = printSDoc . Outputable.text
 
-printJSON :: [(String, T)] -> Debugger ()
+printJSON :: [(String, T)] -> DebuggerMonad ()
 printJSON = printString . getJSONLine
 
-outToStr :: (Outputable d) => d -> Debugger String
+outToStr :: (Outputable d) => d -> DebuggerMonad String
 outToStr str = do
     dflags <- getDynFlags
     return $ Outputable.showSDoc dflags $ Outputable.ppr str

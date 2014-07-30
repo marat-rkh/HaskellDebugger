@@ -24,45 +24,45 @@ initState = DebugState {
     debugOutput = stdout
 }
 
-newtype Debugger a = Debugger {toGhc :: IORef DebugState -> Ghc a}
+newtype DebuggerMonad a = DebuggerMonad {toGhc :: IORef DebugState -> Ghc a}
 
-getDebugState :: Debugger DebugState
-getDebugState   = Debugger $ \r -> liftIO $ readIORef r
-setDebugState :: DebugState -> Debugger ()
-setDebugState s = Debugger $ \r -> liftIO $ writeIORef r s
-modifyDebugState :: (DebugState -> DebugState) -> Debugger ()
-modifyDebugState f = Debugger $ \r -> liftIO $ readIORef r >>= writeIORef r . f
+getDebugState :: DebuggerMonad DebugState
+getDebugState   = DebuggerMonad $ \r -> liftIO $ readIORef r
+setDebugState :: DebugState -> DebuggerMonad ()
+setDebugState s = DebuggerMonad $ \r -> liftIO $ writeIORef r s
+modifyDebugState :: (DebugState -> DebugState) -> DebuggerMonad ()
+modifyDebugState f = DebuggerMonad $ \r -> liftIO $ readIORef r >>= writeIORef r . f
 
-liftGhc :: Ghc a -> Debugger a
-liftGhc m = Debugger $ \_ -> m
+liftGhc :: Ghc a -> DebuggerMonad a
+liftGhc m = DebuggerMonad $ \_ -> m
 
 
-startDebugger :: Debugger a -> DebugState -> Ghc a
+startDebugger :: DebuggerMonad a -> DebugState -> Ghc a
 startDebugger g state = do ref <- liftIO $ newIORef state; toGhc g ref
 
 
-instance MonadIO Debugger where
+instance MonadIO DebuggerMonad where
     liftIO = liftGhc . liftIO
 
-instance Monad Debugger where
-    (Debugger m) >>= k = Debugger $ \s -> m s >>= \a -> toGhc (k a) s
-    return a = Debugger $ \_ -> return a
+instance Monad DebuggerMonad where
+    (DebuggerMonad m) >>= k = DebuggerMonad $ \s -> m s >>= \a -> toGhc (k a) s
+    return a = DebuggerMonad $ \_ -> return a
 
-instance Functor Debugger where
+instance Functor DebuggerMonad where
     fmap = liftM
 
-instance HasDynFlags Debugger where
+instance HasDynFlags DebuggerMonad where
     getDynFlags = getSessionDynFlags
 
-instance GhcMonad Debugger where
+instance GhcMonad DebuggerMonad where
     setSession s' = liftGhc $ setSession s'
     getSession    = liftGhc $ getSession
 
-instance ExceptionMonad Debugger where
-    gcatch m h = Debugger $ \r -> toGhc m r `gcatch` (\e -> toGhc (h e) r)
+instance ExceptionMonad DebuggerMonad where
+    gcatch m h = DebuggerMonad $ \r -> toGhc m r `gcatch` (\e -> toGhc (h e) r)
     gmask f =
-        Debugger $ \s -> gmask $ \io_restore ->
+        DebuggerMonad $ \s -> gmask $ \io_restore ->
             let
-                g_restore (Debugger m) = Debugger $ \s' -> io_restore (m s')
+                g_restore (DebuggerMonad m) = DebuggerMonad $ \s' -> io_restore (m s')
             in
                 toGhc (f g_restore) s

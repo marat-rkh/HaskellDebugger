@@ -1,6 +1,6 @@
 module Main where
 
-import Debugger (defaultRunGhc, startCommandLine, execCommands, printAllBreaksInfo)
+import DebuggerImpl (defaultRunGhc, startCommandLine, execCommands, printAllBreaksInfo)
 
 main :: IO ()
 main = defaultRunGhc startCommandLine
