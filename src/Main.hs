@@ -35,7 +35,7 @@ main = defaultRunGhc startCommandLine
 --                                                                 ":delete Main 9",
 --                                                                 ":trace main"]
 -- | test step into
---main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 9",
+--main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 16",
 --                                                                 ":trace main",
 --                                                                 ":step",
 --                                                                 ":step",
@@ -44,7 +44,7 @@ main = defaultRunGhc startCommandLine
 --                                                                 ":step",
 --                                                                 ":continue"]
 -- | test step over
---main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 9",
+--main = defaultRunGhc $ printAllBreaksInfo "Main" >> execCommands [":break Main 16",
 --                                                                 ":trace main",
 --                                                                 ":steplocal",
 --                                                                 ":steplocal"]

@@ -7,8 +7,6 @@ import qualified GHC (resume)
 import GHC.Paths ( libdir )
 import DynFlags
 import GhcMonad (liftIO)
-import Outputable (Outputable)
-import qualified Outputable
 
 import ParserMonad (parse)
 import CommandParser (debugCommand, DebugCommand(..))
@@ -29,10 +27,8 @@ import SrcLoc (realSrcSpanEnd)
 
 import Control.Exception (SomeException, throwIO)
 
-import Text.JSON
 import Data.Maybe
-import qualified Data.Ratio
-import qualified FastString
+import DebuggerUtils
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -282,9 +278,11 @@ afterRunStmt canLogSpan runResult = do
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 names_str <- mapM outToStr names
                 let srcSpan = GHC.resumeSpan $ head resumes
+                functionName <- getFunctionName mbBreakInfo
                 printJSON [
                         ("info", ConsStr "paused"),
                         ("src_span", srcSpanAsJSON srcSpan),
+                        ("function", ConsStr functionName),
                         ("names", ConsArr $ map ConsStr names_str)
                     ]
                 return False
@@ -292,6 +290,14 @@ afterRunStmt canLogSpan runResult = do
                 nextRunResult <- GHC.resume canLogSpan GHC.SingleStep
                 afterRunStmt canLogSpan nextRunResult
         _ -> return False
+        where
+            getFunctionName :: Maybe BreakInfo -> Debugger String
+            getFunctionName Nothing = return ""
+            getFunctionName (Just breakInfo) = do
+                Just modInfo <- getModuleInfo $ breakInfo_module breakInfo
+                let modBreaks = modInfoModBreaks modInfo
+                let allDecls = modBreaks_decls $ modBreaks
+                return $ last (allDecls ! (breakInfo_number breakInfo))
 
 -- | ':continue' command
 doResume :: Debugger ()
@@ -425,34 +431,6 @@ defaultHistSize = 20
 
 ---- || Utils || -------------------------------------------------------
 
--- | Prints SDoc to the debug stream
-printSDoc :: Outputable.SDoc -> Debugger ()
-printSDoc message = do
-    st <- getDebugState
-    dflags <- getDynFlags
-    unqual <- getPrintUnqual
-    liftIO $ Outputable.printForUser dflags (debugOutput st) unqual message
-    return ()
-
--- | Prints Outputable to the debug stream
-printOutputable :: (Outputable d) => d -> Debugger ()
-printOutputable = printSDoc . Outputable.ppr
-
-printListOfOutputable :: (Outputable d) => [d] -> Debugger ()
-printListOfOutputable = mapM_ printOutputable
-
--- | Prints String to the debug stream
-printString :: String -> Debugger ()
-printString = printSDoc . Outputable.text
-
-printJSON :: [(String, T)] -> Debugger ()
-printJSON = printString . getJSONLine
-
-outToStr :: (Outputable d) => d -> Debugger String
-outToStr str = do
-    dflags <- getDynFlags
-    return $ Outputable.showSDoc dflags $ Outputable.ppr str
-
 -- | Shows info from ModBreaks for given moduleName. It is useful for debuging of our debuger = )
 printAllBreaksInfo :: String -> Debugger ()
 printAllBreaksInfo modName = do
@@ -475,43 +453,3 @@ execCommands []       = return ()
 execCommands (c : cs) = do
     runCommand $ fst $ head $ parse debugCommand c
     execCommands cs
-
-
-data T
-    = ConsBool Bool
-    | ConsInt Int
-    | ConsStr String
-    | ConsArr [T]
-    | ConsObj [(String, T)]
-
-instance JSON T where
-    readJSON _ = Error "Not implemented"    -- function is not needed
---    readJSON (JSRational b x) = if Data.Ratio.denominator x == 1 then Ok (ConsInt $ Data.Ratio.numerator x) else Error "Non-integer number"
---    readJSON (JSString x) = Ok (ConsStr $ fromJSString x)
---    readJSON (JSArray []) = Ok (ConsArr [])
---    readJSON (JSArray (x:xs)) = conc (readJSON x) (readJSON (JSArray xs)) where
---        conc a b = case a of
---            Error er -> Error er
---            Ok ok -> case b of
---                Error er -> Error er
---                Ok (ConsArr oks) -> Ok $ ConsArr (ok:oks)
-    showJSON (ConsBool x) = JSBool x
-    showJSON (ConsInt x) = JSRational False ((toInteger x) Data.Ratio.% 1)
-    showJSON (ConsStr x) = JSString $ toJSString x
-    showJSON (ConsArr x) = JSArray $ map showJSON x
-    showJSON (ConsObj x) = JSObject $ toJSObject $ map (\(key, value) -> (key, showJSON value)) x
-
-
-getJSONLine :: [(String, T)] -> String
-getJSONLine = encode . toJSObject
-
--- | Used methods are marked as 'unsafe'
-srcSpanAsJSON :: SrcSpan -> T
-srcSpanAsJSON (UnhelpfulSpan str) = ConsObj [("span", ConsStr $ FastString.unpackFS str)]
-srcSpanAsJSON (RealSrcSpan span') = ConsObj [
-        ("file", ConsStr $ FastString.unpackFS $ srcSpanFile span'),
-        ("startline", ConsInt $ srcSpanStartLine span'),
-        ("endline", ConsInt $ srcSpanEndLine span'),
-        ("startlcol", ConsInt $ srcSpanStartCol span'),
-        ("endcol", ConsInt $ srcSpanEndCol span')
-    ]
