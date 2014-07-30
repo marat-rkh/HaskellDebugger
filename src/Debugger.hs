@@ -138,6 +138,7 @@ runCommand StepOver                       = doStepLocal >> return False
 runCommand History                        = showHistory defaultHistSize >> return False
 runCommand Exit                           = return True
 runCommand (BreakList modName)            = showBreaks modName >> return False
+runCommand Help                           = printString fullHelpText >> return False
 runCommand _                              = printJSON [
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -409,6 +410,22 @@ showBreaks modName = do
                 ]) locs)
         ]
     return ()
+
+fullHelpText :: String
+fullHelpText =
+    " Commands available from the prompt:\n" ++
+    " -- Commands for debugging:\n" ++
+    "\n" ++
+    "   :break <mod> <l>            set a breakpoint for module <mod> at the line <l>\n" ++
+    "   :breaklist <mod>            show all available breakpoints (index and span) for module <mod>\n" ++
+    "   :continue                   resume after a breakpoint\n" ++
+    "   :delete <mod> <ind>         delete the breakpoint with index <ind> from module <mod>\n" ++
+    "   :history                    after :trace, show the execution history\n" ++
+    "   :step                       single-step after stopping at a breakpoint\n"++
+    "   :steplocal                  single-step within the current top-level binding\n"++
+    "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n"++
+    "   :q                          exit debugger\n" ++
+    "\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
 

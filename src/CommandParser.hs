@@ -15,6 +15,7 @@ data DebugCommand
     | Trace String                -- command
     | BreakList String            -- module
     | Exit
+    | Help
     | Unknown
         deriving Show
 
@@ -28,6 +29,7 @@ stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
 breaklist :: Parser DebugCommand
 exit :: Parser DebugCommand
+help :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -40,6 +42,7 @@ debugCommand = unlist [
                         trace,
                         breaklist,
                         exit,
+                        help,
                         unknown
                       ]
 
@@ -106,6 +109,12 @@ exit = do
     skipSpaces
     end
     return Exit
+
+help = do
+    string ":?"
+    skipSpaces
+    end
+    return Help
 
 unknown = do
     restOfInput
