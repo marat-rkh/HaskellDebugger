@@ -6,13 +6,14 @@ import ParserMonad
 
 ------------------------------------------------------------------------
 data DebugCommand 
-    = SetBreakpoint String Int  -- module, line
+    = SetBreakpoint String Int    -- module, line
     | RemoveBreakpoint String Int -- module, index
     | Resume
     | History
     | StepInto
     | StepOver
-    | Trace String              -- command
+    | Trace String                -- command
+    | BreakList String            -- module
     | Exit
     | Unknown
         deriving Show
@@ -25,6 +26,7 @@ history :: Parser DebugCommand
 stepInto :: Parser DebugCommand
 stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
+breaklist :: Parser DebugCommand
 exit :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
@@ -36,6 +38,7 @@ debugCommand = unlist [
                         stepInto,
                         stepOver,
                         trace,
+                        breaklist,
                         exit,
                         unknown
                       ]
@@ -89,6 +92,14 @@ trace = do
     waitAndSkipSpaces
     cmd <- restOfInput
     return $ Trace cmd
+
+breaklist = do
+    string ":breaklist"
+    waitAndSkipSpaces
+    mod' <- restSatisfiedChars (not . isSpace)
+    skipSpaces
+    end
+    return $ BreakList mod'
 
 exit = do
     string ":q"

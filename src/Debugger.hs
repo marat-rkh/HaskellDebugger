@@ -142,6 +142,7 @@ runCommand StepInto                       = doStepInto >> return False
 runCommand StepOver                       = doStepLocal >> return False
 runCommand History                        = showHistory defaultHistSize True >> return False
 runCommand Exit                           = return True
+runCommand (BreakList modName)            = showBreaks modName >> return False
 runCommand _                              = printJSON [
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -389,6 +390,20 @@ showHistory num showVars = do
                     ("history", ConsArr lines),
                     ("end_reached", ConsBool (null rest))
                 ]
+
+-- | ':breaklist' command
+showBreaks :: String -> Debugger ()
+showBreaks modName = do
+    modBreaks <- getModBreaks modName
+    let locs = assocs $ modBreaks_locs $ modBreaks
+    printJSON [
+            ("info", ConsStr "break list"),
+            ("breaks", ConsArr $ map (\(i, e) -> ConsObj [
+                    ("index", ConsInt i),
+                    ("src_span", srcSpanAsJSON e)
+                ]) locs)
+        ]
+    return ()
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
 
