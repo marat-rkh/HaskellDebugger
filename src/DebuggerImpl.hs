@@ -34,17 +34,12 @@ import Debugger (pprintClosureCommand)
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
-tryRun :: DebuggerMonad a -> DebuggerMonad (Maybe a)
-tryRun func = do {
-    result <- func;
-    return $ Just result;
-} `gcatch` (\ex -> do {
-    printJSON [
+tryRun :: DebuggerMonad (Result, Bool) -> DebuggerMonad (Result, Bool)
+tryRun func = func `gcatch`
+    (\ex -> return ([
             ("info", ConsStr "exception"),
             ("message", ConsStr $ show (ex::SomeException))
-        ];
-    return Nothing;
-})
+        ], False))
 
 
 -- |Runs Ghc program with default settings
@@ -124,10 +119,9 @@ initDebugOutput = do
 startCommandLine :: DebuggerMonad ()
 startCommandLine = whileNot $ do
     command <- getCommand stdin
-    m_result <- tryRun (runCommand command)
-    case m_result of
-        Just result -> return result
-        Nothing -> return False
+    result <- tryRun (runCommand command)
+    printJSON $ fst result
+    return $ snd result
 
 whileNot :: DebuggerMonad Bool -> DebuggerMonad ()
 whileNot p = do
@@ -140,28 +134,34 @@ getCommand handle_ = do
     line <- liftIO $ hGetLine handle_
     return $ fst $ head $ parse debugCommand line
 
+type Result = [(String, T)]
+
 -- |Runs DebugCommand and returns True iff debug is finished
-runCommand :: DebugCommand -> DebuggerMonad Bool
-runCommand (SetBreakpoint modName line)   = setBreakpointLikeGHCiDo modName line >> return False
-runCommand (RemoveBreakpoint modName ind) = deleteBreakpoint modName ind >> return False
-runCommand (Trace command)                = doTrace command >> return False
-runCommand Resume                         = doResume >> return False
-runCommand StepInto                       = doStepInto >> return False
-runCommand StepOver                       = doStepLocal >> return False
-runCommand History                        = showHistory defaultHistSize >> return False
-runCommand Exit                           = return True
-runCommand (BreakList modName)            = showBreaks modName >> return False
-runCommand Help                           = printString fullHelpText >> return False
-runCommand (Print name)                   = doPrint name >> return False
-runCommand (SPrint name)                  = doSPrint name >> return False
-runCommand (Force expr)                   = doForce expr >> return False
-runCommand _                              = printJSON [
+-- Inside commands there should not be any output to debug stream
+runCommand :: DebugCommand -> DebuggerMonad (Result, Bool)
+runCommand (SetBreakpoint modName line)   = notEnd $ setBreakpointLikeGHCiDo modName line
+runCommand (RemoveBreakpoint modName ind) = notEnd $ deleteBreakpoint modName ind
+runCommand (Trace command)                = doTrace command
+runCommand Resume                         = doResume
+runCommand StepInto                       = doStepInto
+runCommand StepOver                       = doStepLocal
+runCommand History                        = notEnd $ showHistory defaultHistSize
+runCommand Exit                           = return ([], True)
+runCommand (BreakList modName)            = notEnd $ showBreaks modName
+runCommand Help                           = printString fullHelpText >> return ([], False) -- todo: return string as Result
+runCommand (Print name)                   = doPrint name >> return ([], False)
+runCommand (SPrint name)                  = doSPrint name >> return ([], False)
+runCommand (Force expr)                   = doForce expr >> return ([], False)
+runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
-                                            ] >> return False
+                                            ], False)
+
+notEnd :: DebuggerMonad Result -> DebuggerMonad (Result, Bool)
+notEnd obj = obj >>= (\x -> return (x, False))
 
 -- | setBreakpoint version with selector just taking first of avaliable breakpoints
-setBreakpointFirstOfAvailable :: String -> Int -> DebuggerMonad ()
+setBreakpointFirstOfAvailable :: String -> Int -> DebuggerMonad Result
 setBreakpointFirstOfAvailable modName line = setBreakpoint modName line (Just . head)
 
 -- | setBreakpoint version with selector choosing
@@ -169,7 +169,7 @@ setBreakpointFirstOfAvailable modName line = setBreakpoint modName line (Just . 
 -- |   - the leftmost subexpression starting on the specified line, or
 -- |   - the rightmost subexpression enclosing the specified line
 -- | This strategy is the same to one GHCi currently uses
-setBreakpointLikeGHCiDo :: String -> Int -> DebuggerMonad ()
+setBreakpointLikeGHCiDo :: String -> Int -> DebuggerMonad Result
 setBreakpointLikeGHCiDo modName line = setBreakpoint modName line selectOneOf
     where selectOneOf :: [(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)
           selectOneOf breaks_ = listToMaybe (sortBy (leftmost_largest `on` snd)  onelineBreaks) `mplus`
@@ -183,11 +183,11 @@ setBreakpointLikeGHCiDo modName line = setBreakpoint modName line selectOneOf
 
 -- | finds all avaliable breakpoint for given line, then using selector takes one of them and activates it
 -- | if no breaks are avaliable proper message is shown
-setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)) -> DebuggerMonad ()
+setBreakpoint :: String -> Int -> ([(BreakIndex, SrcSpan)] -> Maybe (BreakIndex, SrcSpan)) -> DebuggerMonad Result
 setBreakpoint modName line selector = do
     breaksForLine <- findBreaksForLine modName line
     case breaksForLine of 
-        []           -> printJSON [
+        []           -> return [
                                 ("info", ConsStr "breakpoint was not set"),
                                 ("add_info", ConsStr "not allowed here")
                             ]
@@ -199,17 +199,19 @@ setBreakpoint modName line selector = do
 --                    let msg = if res then "# Breakpoint (index = "++ show breakIndex ++") was set here:\n" ++ show srcSpan
 --                              else "# Breakpoint was not set: setBreakOn returned False"
                     if res
-                        then printJSON [
+                        then return [
                                 ("info", ConsStr "breakpoint was set"),
                                 ("index", ConsInt $ breakIndex),
                                 ("src_span", srcSpanAsJSON srcSpan)
                             ]
-                        else printJSON [
-                                 ("info", ConsStr "breakpoint was not set"),
-                                 ("add_info", ConsStr "selector returned Nothing")
-                             ]
---                    printString msg
-                Nothing -> printString "# Breakpoint was not set: selector returned Nothing"
+                        else return [
+                                ("info", ConsStr "breakpoint was not set"),
+                                ("add_info", ConsStr "selector returned Nothing")
+                            ]
+                Nothing -> return [
+                                ("info", ConsStr "breakpoint was not set"),
+                                ("add_info", ConsStr "selector returned Nothing")
+                            ]
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: srcSpanStartLine == line
 -- | todo: this function is very suboptimal, it is temporary decition
@@ -252,34 +254,32 @@ setBreakFlag bArr ind flag | flag      = setBreakOn bArr ind
                            | otherwise = setBreakOff bArr ind
 
 -- | ':delete <module name> <break index>' command
-deleteBreakpoint ::  String -> Int -> DebuggerMonad ()
+deleteBreakpoint ::  String -> Int -> DebuggerMonad Result
 deleteBreakpoint modName breakIndex = do
     res <- changeBreakFlagInModBreaks modName breakIndex False
     if res
-        then printJSON [
+        then return [
                 ("info", ConsStr "breakpoint was removed"),
                 ("index", ConsInt breakIndex)
             ]
-        else printJSON [
+        else return [
                 ("info", ConsStr "breakpoint was not removed"),
                 ("add_info", ConsStr "incorrect index")
             ]
 
 -- | ':trace' command
-doTrace :: String -> DebuggerMonad ()
+doTrace :: String -> DebuggerMonad (Result, Bool)
 doTrace []   = doContinue (const True) GHC.RunAndLogSteps
 doTrace expr = do
     runResult <- GHC.runStmt expr GHC.RunAndLogSteps
     afterRunStmt (const True) runResult
-    return ()
 
-doContinue :: (SrcSpan -> Bool) -> SingleStep -> DebuggerMonad ()
+doContinue :: (SrcSpan -> Bool) -> SingleStep -> DebuggerMonad (Result, Bool)
 doContinue canLogSpan step = do
     runResult <- GHC.resume canLogSpan step
     afterRunStmt canLogSpan runResult
-    return ()
 
-afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> DebuggerMonad Bool
+afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> DebuggerMonad (Result, Bool)
 afterRunStmt _ (GHC.RunException e) = liftIO $ throwIO e
 afterRunStmt canLogSpan runResult = do
     flushInterpBuffers
@@ -287,27 +287,30 @@ afterRunStmt canLogSpan runResult = do
     case runResult of
         GHC.RunOk names -> do
             names_str <- mapM outToStr names
-            printJSON [
-                    ("info", ConsStr "finished"),
-                    ("names", ConsArr $ map ConsStr names_str)
-                ]
-            return True
+            let res = [
+                        ("info", ConsStr "finished"),
+                        ("names", ConsArr $ map ConsStr names_str)
+                    ]
+            return (res, True)
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 names_str <- mapM outToStr names
                 let srcSpan = GHC.resumeSpan $ head resumes
                 functionName <- getFunctionName mbBreakInfo
-                printJSON [
-                        ("info", ConsStr "paused"),
-                        ("src_span", srcSpanAsJSON srcSpan),
-                        ("function", ConsStr functionName),
-                        ("names", ConsArr $ map ConsStr names_str)
-                    ]
-                return False
+                let res = [
+                            ("info", ConsStr "paused"),
+                            ("src_span", srcSpanAsJSON srcSpan),
+                            ("function", ConsStr functionName),
+                            ("names", ConsArr $ map ConsStr names_str)
+                        ]
+                return (res, False)
             | otherwise -> do
                 nextRunResult <- GHC.resume canLogSpan GHC.SingleStep
                 afterRunStmt canLogSpan nextRunResult
-        _ -> return False
+        _ -> return ([
+                ("info", ConsStr "warning"),
+                ("message", ConsStr "Unknown RunResult")
+            ], False)
         where
             getFunctionName :: Maybe BreakInfo -> DebuggerMonad String
             getFunctionName Nothing = return ""
@@ -318,23 +321,23 @@ afterRunStmt canLogSpan runResult = do
                 return $ last (allDecls ! (breakInfo_number breakInfo))
 
 -- | ':continue' command
-doResume :: DebuggerMonad ()
+doResume :: DebuggerMonad (Result, Bool)
 doResume = doContinue (const True) GHC.RunToCompletion
 
 -- |':step [<expr>]' command - general step command
-doStepGeneral :: String -> DebuggerMonad ()
+doStepGeneral :: String -> DebuggerMonad (Result, Bool)
 doStepGeneral []   = doContinue (const True) GHC.SingleStep
-doStepGeneral _ = printJSON [
+doStepGeneral _ = return ([
          ("info", ConsStr "exception"),
          ("message", ConsStr "not implemented yet")
-     ]
+     ], False)
 
 -- |':step' command
-doStepInto :: DebuggerMonad ()
+doStepInto :: DebuggerMonad (Result, Bool)
 doStepInto = doStepGeneral []
 
 -- | ':steplocal' command
-doStepLocal :: DebuggerMonad ()
+doStepLocal :: DebuggerMonad (Result, Bool)
 doStepLocal = do
     mbSrcSpan <- getCurrentBreakSpan
     case mbSrcSpan of
@@ -343,10 +346,10 @@ doStepLocal = do
             Just module_ <- getCurrentBreakModule
             mbCurrentToplevelDecl <- enclosingSpan module_ srcSpan
             case mbCurrentToplevelDecl of
-                Nothing -> printJSON [
+                Nothing -> return ([
                         ("info", ConsStr "warning"),
                         ("message", ConsStr "steplocal was not performed: enclosingSpan returned Nothing")
-                    ]
+                    ], False)
                 Just currentToplevelDecl -> doContinue (`isSubspanOf` currentToplevelDecl) GHC.SingleStep
 
 -- | Returns the largest SrcSpan containing the given one or Nothing
@@ -392,11 +395,11 @@ getCurrentBreakModule = do
                 return $ Just $ GHC.getHistoryModule  hist
 
 -- | ':history' command
-showHistory :: Int -> DebuggerMonad ()
+showHistory :: Int -> DebuggerMonad Result
 showHistory num = do
     resumes <- GHC.getResumeContext
     case resumes of
-        [] -> printJSON [("info", ConsStr "not stopped at breakpoint")]
+        [] -> return [("info", ConsStr "not stopped at breakpoint")]
         (r:_) -> do
             let hist = resumeHistory r
                 (took, rest) = splitAt num hist
@@ -408,25 +411,24 @@ showHistory num = do
                         ("function", (ConsStr . head . GHC.historyEnclosingDecls) h),
                         ("src_span", srcSpanAsJSON s)
                     ]) (zip3 idx spans' hist)
-            printJSON [
+            return [
                     ("info", ConsStr "got history"),
                     ("history", ConsArr lines'),
                     ("end_reached", ConsBool (null rest))
                 ]
 
 -- | ':breaklist' command
-showBreaks :: String -> DebuggerMonad ()
+showBreaks :: String -> DebuggerMonad Result
 showBreaks modName = do
     modBreaks <- getModBreaks modName
     let locs = assocs $ modBreaks_locs $ modBreaks
-    printJSON [
+    return [
             ("info", ConsStr "break list"),
             ("breaks", ConsArr $ map (\(i, e) -> ConsObj [
                     ("index", ConsInt i),
                     ("src_span", srcSpanAsJSON e)
                 ]) locs)
         ]
-    return ()
 
 -- | ':print', ':sprint' and ':force' commands
 doPrint, doSPrint, doForce :: String -> DebuggerMonad ()

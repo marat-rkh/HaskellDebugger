@@ -6,9 +6,6 @@ import DebuggerMonad
 import GHC hiding (resume)
 import DynFlags
 import GhcMonad (liftIO)
-import ParserMonad (parse)
-import BreakArray
-import Data.Array
 import qualified FastString
 import Text.JSON
 import qualified Data.Ratio
