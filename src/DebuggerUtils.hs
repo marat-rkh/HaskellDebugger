@@ -76,6 +76,6 @@ srcSpanAsJSON (RealSrcSpan span') = ConsObj [
         ("file", ConsStr $ FastString.unpackFS $ srcSpanFile span'),
         ("startline", ConsInt $ srcSpanStartLine span'),
         ("endline", ConsInt $ srcSpanEndLine span'),
-        ("startlcol", ConsInt $ srcSpanStartCol span'),
+        ("startcol", ConsInt $ srcSpanStartCol span'),
         ("endcol", ConsInt $ srcSpanEndCol span')
     ]
