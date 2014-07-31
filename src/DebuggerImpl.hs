@@ -51,8 +51,16 @@ tryRun func = do {
 defaultRunGhc :: DebuggerMonad a -> IO ()
 defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut $ runGhc (Just libdir) $
     startDebugger (do
-        setupStandardContext
         handleArguments
+        st <- getDebugState
+        modulePath <- do
+            case (mainFile st) of
+                Just path -> return path
+                Nothing   -> printJSON [
+                        ("info", ConsStr "warning"),
+                        ("message", ConsStr $ "Main module not specified, choosing " ++ mainModulePath)
+                    ] >> return mainModulePath
+        setupContext modulePath mainModuleName
         initDebugOutput
         initInterpBuffering
         program
@@ -78,7 +86,9 @@ handleArguments = do
         handle' x = do
             let arg = fst $ head $ parse cmdArgument x
             case arg of
-                SetPort p -> do modifyDebugState $ \st -> st{port = Just p}
+                Main m    -> modifyDebugState $ \st -> st{mainFile = Just m}
+                Import _  -> return ()
+                SetPort p -> modifyDebugState $ \st -> st{port = Just p}
                 CmdArgsParser.Unknown s -> printJSON [
                         ("info", ConsStr "warning"),
                         ("message", ConsStr $ "unknown argument: " ++ s)

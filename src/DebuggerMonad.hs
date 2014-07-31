@@ -20,6 +20,7 @@ import GHC.Exts
 import System.IO
 
 data DebugState = DebugState {
+    mainFile :: Maybe String,
     breaks :: [(Int, Module, Int)], -- number, module, line
     port :: Maybe Int,
     debugOutput :: Handle,
@@ -29,6 +30,7 @@ data DebugState = DebugState {
 
 initState :: DebugState
 initState = DebugState {
+    mainFile = Nothing,
     breaks = [],
     port = Nothing,
     debugOutput = stdout,
