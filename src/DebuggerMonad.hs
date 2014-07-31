@@ -1,3 +1,6 @@
+{-# LANGUAGE CPP, FlexibleInstances, UnboxedTuples, MagicHash #-}
+{-# OPTIONS_GHC -fno-cse -fno-warn-orphans #-}
+
 module DebuggerMonad where
 
 import GHC hiding (resume)
@@ -7,21 +10,30 @@ import Exception (ExceptionMonad(..))
 import GhcMonad ()
 import DynFlags
 import MonadUtils
+import GhcMonad ()
+
+import ObjLink (lookupSymbol)
+import GHC.Ptr ()
+import Linker
+import GHC.Exts
 
 import System.IO
-
 
 data DebugState = DebugState {
     breaks :: [(Int, Module, Int)], -- number, module, line
     port :: Maybe Int,
-    debugOutput :: Handle
+    debugOutput :: Handle,
+    mb_stdout_ptr :: Maybe (Ptr ()),
+    mb_stderr_ptr :: Maybe (Ptr ())
 }
 
 initState :: DebugState
 initState = DebugState {
     breaks = [],
     port = Nothing,
-    debugOutput = stdout
+    debugOutput = stdout,
+    mb_stdout_ptr = Nothing,
+    mb_stderr_ptr = Nothing
 }
 
 newtype DebuggerMonad a = DebuggerMonad {toGhc :: IORef DebugState -> Ghc a}
@@ -35,7 +47,6 @@ modifyDebugState f = DebuggerMonad $ \r -> liftIO $ readIORef r >>= writeIORef r
 
 liftGhc :: Ghc a -> DebuggerMonad a
 liftGhc m = DebuggerMonad $ \_ -> m
-
 
 startDebugger :: DebuggerMonad a -> DebugState -> Ghc a
 startDebugger g state = do ref <- liftIO $ newIORef state; toGhc g ref
@@ -66,3 +77,26 @@ instance ExceptionMonad DebuggerMonad where
                 g_restore (DebuggerMonad m) = DebuggerMonad $ \s' -> io_restore (m s')
             in
                 toGhc (f g_restore) s
+
+initInterpBuffering :: DebuggerMonad ()
+initInterpBuffering = do
+    dflags <- GHC.getSessionDynFlags
+    liftIO $ initDynLinker dflags
+    mb_stdout <- liftIO $ ObjLink.lookupSymbol "base_GHCziIOziHandleziFD_stdout_closure"
+    mb_stderr <- liftIO $ ObjLink.lookupSymbol "base_GHCziIOziHandleziFD_stderr_closure"
+    modifyDebugState $ \st -> st{mb_stdout_ptr = mb_stdout, mb_stderr_ptr = mb_stderr}
+
+flushInterpBuffers :: DebuggerMonad ()
+flushInterpBuffers = do
+    st <- getDebugState
+    let (Just stdout_ptr) = mb_stdout_ptr st
+    let (Just stderr_ptr) = mb_stderr_ptr st
+    h1 <- liftIO $ getHandle (stdout_ptr)
+    h2 <- liftIO $ getHandle (stderr_ptr)
+    liftIO $ hFlush h1
+    liftIO $ hFlush h2
+
+getHandle :: Ptr () -> IO Handle
+getHandle (Ptr addr) = do
+    case addrToAny# addr of (# hval #) -> return (unsafeCoerce# hval)
+

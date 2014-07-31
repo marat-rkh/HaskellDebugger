@@ -54,6 +54,7 @@ defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut
         setupStandardContext
         handleArguments
         initDebugOutput
+        initInterpBuffering
         program
         return ()
     ) initState
@@ -271,6 +272,7 @@ doContinue canLogSpan step = do
 afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> DebuggerMonad Bool
 afterRunStmt _ (GHC.RunException e) = liftIO $ throwIO e
 afterRunStmt canLogSpan runResult = do
+    flushInterpBuffers
     resumes <- GHC.getResumeContext
     case runResult of
         GHC.RunOk names -> do
