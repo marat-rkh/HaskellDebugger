@@ -9,6 +9,11 @@ import GhcMonad (liftIO)
 import qualified FastString
 import Text.JSON
 import qualified Data.Ratio
+import Name
+
+compareNames :: Name -> Name -> Ordering
+n1 `compareNames` n2 = compareWith n1 `compare` compareWith n2
+    where compareWith n = (getOccString n, getSrcSpan n)
 
 -- | Prints SDoc to the debug stream
 printSDoc :: Outputable.SDoc -> DebuggerMonad ()
@@ -18,6 +23,12 @@ printSDoc message = do
     unqual <- getPrintUnqual
     liftIO $ Outputable.printForUser dflags (debugOutput st) unqual message
     return ()
+
+showSDoc :: Outputable.SDoc -> DebuggerMonad String
+showSDoc message = do
+    dflags <- getDynFlags
+    unqual <- getPrintUnqual
+    return $ Outputable.showSDocForUser dflags unqual message
 
 -- | Prints Outputable to the debug stream
 printOutputable :: (Outputable d) => d -> DebuggerMonad ()

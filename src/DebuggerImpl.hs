@@ -32,6 +32,8 @@ import DebuggerUtils
 
 import Debugger (pprintClosureCommand)
 
+import PprTyThing
+
 ---- || Debugger runner || --------------------------------------------------------------------------
 
 tryRun :: DebuggerMonad (Result, Bool) -> DebuggerMonad (Result, Bool)
@@ -294,14 +296,15 @@ afterRunStmt canLogSpan runResult = do
             return (res, True)
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
-                names_str <- mapM outToStr names
+              --  names_str <- mapM outToStr names
                 let srcSpan = GHC.resumeSpan $ head resumes
                 functionName <- getFunctionName mbBreakInfo
+                vars <- getNamesInfo names
                 let res = [
                             ("info", ConsStr "paused"),
                             ("src_span", srcSpanAsJSON srcSpan),
                             ("function", ConsStr functionName),
-                            ("names", ConsArr $ map ConsStr names_str)
+                            ("vars", vars)
                         ]
                 return (res, False)
             | otherwise -> do
@@ -379,6 +382,36 @@ getCurrentBreakSpan = do
                 let hist = GHC.resumeHistory r !! (ix-1)
                 pan <- GHC.getHistorySpan hist
                 return (Just pan)
+
+
+getNamesInfo :: [Name] -> DebuggerMonad T
+getNamesInfo names = do
+    let namesSorted = sortBy compareNames names
+    alltythings <- catMaybes `liftM` mapM GHC.lookupName namesSorted
+    let tythings = [AnId i | AnId i <- alltythings]
+    names' <- mapM getThingName tythings
+    types <- mapM getThingType tythings
+    values <- mapM getThingValue tythings
+
+    return $ ConsArr $ map (\(n, t, v) -> ConsObj [
+            ("name", ConsStr n),
+            ("type", ConsStr t),
+            ("value", ConsStr v)
+        ]) (zip3 names' types values)
+        where
+            getThingName :: TyThing -> DebuggerMonad (String)
+            getThingName = outToStr . getName
+
+            getThingType :: TyThing -> DebuggerMonad (String)
+            getThingType (AnId id') = do
+                showSDoc $ pprTypeForUser False (GHC.idType id')
+            getThingType _ = fail "Shouldn't be here"
+
+            getThingValue :: TyThing -> DebuggerMonad (String)
+            getThingValue (AnId id') = do
+                term <- GHC.obtainTermFromId 100 False id'
+                outToStr $ term
+            getThingValue _ = fail "Shouldn't be here"
 
 
 getCurrentBreakModule :: DebuggerMonad (Maybe Module)
