@@ -406,7 +406,7 @@ showHistory num = do
                 lines' = map (\(i, s, h) -> ConsObj [
                         ("index", ConsInt i),
                         ("function", (ConsStr . head . GHC.historyEnclosingDecls) h),
-                        ("position", srcSpanAsJSON s)
+                        ("src_span", srcSpanAsJSON s)
                     ]) (zip3 idx spans' hist)
             printJSON [
                     ("info", ConsStr "got history"),
