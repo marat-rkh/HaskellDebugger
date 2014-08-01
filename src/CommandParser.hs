@@ -19,6 +19,7 @@ data DebugCommand
     | Print String                -- name of binding
     | SPrint String               -- name of binding
     | Force String                -- expr
+    | ExprType String             -- expr
     | Unknown
         deriving Show
 
@@ -36,6 +37,7 @@ help :: Parser DebugCommand
 printName :: Parser DebugCommand
 sprintName :: Parser DebugCommand
 force :: Parser DebugCommand
+exprType :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -52,6 +54,7 @@ debugCommand = unlist [
                         printName,
                         sprintName,
                         force,
+                        exprType,
                         unknown
                       ]
 
@@ -146,6 +149,12 @@ force = do
     waitAndSkipSpaces
     expr <- restOfInput
     return $ Force expr
+
+exprType = do
+    string ":type"
+    waitAndSkipSpaces
+    cmd <- restOfInput
+    return $ ExprType cmd
 
 unknown = do
     restOfInput

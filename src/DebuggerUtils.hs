@@ -30,6 +30,10 @@ showSDoc message = do
     unqual <- getPrintUnqual
     return $ Outputable.showSDocForUser dflags unqual message
 
+showOutputable :: (Outputable d) => d -> DebuggerMonad String
+showOutputable str = do
+    showSDoc $ Outputable.ppr str
+
 -- | Prints Outputable to the debug stream
 printOutputable :: (Outputable d) => d -> DebuggerMonad ()
 printOutputable = printSDoc . Outputable.ppr
@@ -44,10 +48,6 @@ printString = printSDoc . Outputable.text
 printJSON :: [(String, T)] -> DebuggerMonad ()
 printJSON = printString . getJSONLine
 
-outToStr :: (Outputable d) => d -> DebuggerMonad String
-outToStr str = do
-    dflags <- getDynFlags
-    return $ Outputable.showSDoc dflags $ Outputable.ppr str
 
 data T
     = ConsBool Bool

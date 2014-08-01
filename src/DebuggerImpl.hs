@@ -154,6 +154,7 @@ runCommand Help                           = printString fullHelpText >> return (
 runCommand (Print name)                   = doPrint name >> return ([], False)
 runCommand (SPrint name)                  = doSPrint name >> return ([], False)
 runCommand (Force expr)                   = doForce expr >> return ([], False)
+runCommand (ExprType expr)                = notEnd $ getExprType expr
 runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -288,7 +289,7 @@ afterRunStmt canLogSpan runResult = do
     resumes <- GHC.getResumeContext
     case runResult of
         GHC.RunOk names -> do
-            names_str <- mapM outToStr names
+            names_str <- mapM showOutputable names
             let res = [
                         ("info", ConsStr "finished"),
                         ("names", ConsArr $ map ConsStr names_str)
@@ -400,7 +401,7 @@ getNamesInfo names = do
         ]) (zip3 names' types values)
         where
             getThingName :: TyThing -> DebuggerMonad (String)
-            getThingName = outToStr . getName
+            getThingName = showOutputable . getName
 
             getThingType :: TyThing -> DebuggerMonad (String)
             getThingType (AnId id') = do
@@ -410,7 +411,7 @@ getNamesInfo names = do
             getThingValue :: TyThing -> DebuggerMonad (String)
             getThingValue (AnId id') = do
                 term <- GHC.obtainTermFromId 100 False id'
-                outToStr $ term
+                showOutputable term
             getThingValue _ = fail "Shouldn't be here"
 
 
@@ -469,6 +470,15 @@ doPrint  = pprintClosureCommand True False
 doSPrint = pprintClosureCommand False False
 doForce  = pprintClosureCommand False True
 
+getExprType :: String -> DebuggerMonad Result
+getExprType expr = do
+    ty <- GHC.exprType expr
+    doc <- showSDoc $ pprTypeForUser False ty
+    return [
+            ("info", ConsStr "expression type"),
+            ("type", ConsStr doc)
+        ]
+
 fullHelpText :: String
 fullHelpText =
     " Commands available from the prompt:\n" ++
@@ -482,9 +492,10 @@ fullHelpText =
     "   :history                    after :trace, show the execution history\n" ++
     "   :print <name>               prints a value without forcing its computation\n" ++
     "   :sprint <name>              simplifed version of :print\n" ++
-    "   :step                       single-step after stopping at a breakpoint\n"++
-    "   :steplocal                  single-step within the current top-level binding\n"++
-    "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n"++
+    "   :step                       single-step after stopping at a breakpoint\n" ++
+    "   :steplocal                  single-step within the current top-level binding\n" ++
+    "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n" ++
+    "   :type <expr>                show the type of <expr>" ++
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
