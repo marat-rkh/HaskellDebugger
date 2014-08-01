@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
+{-# LANGUAGE CPP, FlexibleInstances, UnboxedTuples, MagicHash #-}
 
 module DebuggerImpl where
 
@@ -155,6 +156,7 @@ runCommand (Print name)                   = doPrint name >> return ([], False)
 runCommand (SPrint name)                  = doSPrint name >> return ([], False)
 runCommand (Force expr)                   = doForce expr >> return ([], False)
 runCommand (ExprType expr)                = notEnd $ getExprType expr
+runCommand (Evaluate expr)                = notEnd $ evaluate expr
 runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -479,6 +481,18 @@ getExprType expr = do
             ("type", ConsStr doc)
         ]
 
+evaluate :: String -> DebuggerMonad Result
+evaluate str = do
+    -- it seems that __evalResult is not stored after evaluating, so it is safe to do such binding
+    RunOk [name] <- GHC.runStmt ("let __evalResult = " ++ str) GHC.RunToCompletion
+    Just (AnId id') <- GHC.lookupName name
+    term <- GHC.obtainTermFromId 100 True id'
+    res <- showOutputable term
+    return [
+            ("info", ConsStr "evaluated"),
+            ("value", ConsStr res)
+        ]
+
 fullHelpText :: String
 fullHelpText =
     " Commands available from the prompt:\n" ++
@@ -496,6 +510,7 @@ fullHelpText =
     "   :steplocal                  single-step within the current top-level binding\n" ++
     "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n" ++
     "   :type <expr>                show the type of <expr>" ++
+    "   :eval <expr>                evaluates <expr>" ++
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
