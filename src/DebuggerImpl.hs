@@ -486,11 +486,13 @@ evaluate str = do
     -- it seems that __evalResult is not stored after evaluating, so it is safe to do such binding
     RunOk [name] <- GHC.runStmt ("let __evalResult = " ++ str) GHC.RunToCompletion
     Just (AnId id') <- GHC.lookupName name
+    type' <- showSDoc $ pprTypeForUser False (GHC.idType id')
     term <- GHC.obtainTermFromId 100 True id'
-    res <- showOutputable term
+    value <- showOutputable term
     return [
             ("info", ConsStr "evaluated"),
-            ("value", ConsStr res)
+            ("type", ConsStr type'),
+            ("value", ConsStr value)
         ]
 
 fullHelpText :: String
