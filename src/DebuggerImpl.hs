@@ -503,10 +503,15 @@ back :: DebuggerMonad Result
 back = do
     (names, _, pan) <- GHC.back
     names_str <- mapM showOutputable names
+    evs <- mapM evaluate names_str
     return [
             ("info", ConsStr "stepped back"),
             ("src_span", srcSpanAsJSON pan),
-            ("vars", ConsArr $ map (\name -> ConsObj [("name", ConsStr name), ("type", ConsNull), ("value", ConsNull)]) names_str)
+            ("vars", ConsArr $ map (\(name, [_, (_, ConsStr ty), (_, ConsStr val)]) -> ConsObj [
+                    ("name", ConsStr name),
+                    ("type", ConsStr ty),
+                    ("value", ConsStr val)
+                ]) (zip names_str evs))
         ]
 
 -- | ":forward"
@@ -514,10 +519,15 @@ forward :: DebuggerMonad Result
 forward = do
     (names, ix, pan) <- GHC.forward
     names_str <- mapM showOutputable names
+    evs <- mapM evaluate names_str
     return [
             ("info", ConsStr "stepped forward"),
             ("src_span", srcSpanAsJSON pan),
-            ("vars", ConsArr $ map (\name -> ConsObj [("name", ConsStr name), ("type", ConsNull), ("value", ConsNull)]) names_str),
+            ("vars", ConsArr $ map (\(name, [_, (_, ConsStr ty), (_, ConsStr val)]) -> ConsObj [
+                    ("name", ConsStr name),
+                    ("type", ConsStr ty),
+                    ("value", ConsStr val)
+                ]) (zip names_str evs))
             ("hist_top", ConsBool (ix == 0))
         ]
 
