@@ -10,6 +10,8 @@ data DebugCommand
     | RemoveBreakpoint String Int -- module, index
     | Resume
     | History
+    | Back
+    | Forward
     | StepInto
     | StepOver
     | Trace String                -- command
@@ -29,6 +31,8 @@ setBreakpoint :: Parser DebugCommand
 removeBreakpoint :: Parser DebugCommand
 resume :: Parser DebugCommand
 history :: Parser DebugCommand
+back :: Parser DebugCommand
+forward :: Parser DebugCommand
 stepInto :: Parser DebugCommand
 stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
@@ -47,6 +51,8 @@ debugCommand = unlist [
                         removeBreakpoint,
                         resume,
                         history,
+                        back,
+                        forward,
                         stepInto,
                         stepOver,
                         trace,
@@ -92,6 +98,18 @@ history = do
     skipSpaces
     end
     return History
+
+back = do
+    string ":back"
+    skipSpaces
+    end
+    return Back
+
+forward = do
+    string ":forward"
+    skipSpaces
+    end
+    return Forward
 
 stepInto = do
     string ":step"

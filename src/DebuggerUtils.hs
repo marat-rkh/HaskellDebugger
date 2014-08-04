@@ -50,7 +50,8 @@ printJSON = printString . getJSONLine
 
 
 data T
-    = ConsBool Bool
+    = ConsNull
+    | ConsBool Bool
     | ConsInt Int
     | ConsStr String
     | ConsArr [T]
@@ -67,6 +68,7 @@ instance JSON T where
 --            Ok ok -> case b of
 --                Error er -> Error er
 --                Ok (ConsArr oks) -> Ok $ ConsArr (ok:oks)
+    showJSON (ConsNull) = JSNull
     showJSON (ConsBool x) = JSBool x
     showJSON (ConsInt x) = JSRational False ((toInteger x) Data.Ratio.% 1)
     showJSON (ConsStr x) = JSString $ toJSString x

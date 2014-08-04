@@ -3,8 +3,8 @@
 
 module DebuggerImpl where
 
-import GHC hiding (resume)
-import qualified GHC (resume)
+import GHC hiding (resume, back, forward)
+import qualified GHC (resume, back, forward)
 import GHC.Paths ( libdir )
 import DynFlags
 import GhcMonad (liftIO)
@@ -149,6 +149,8 @@ runCommand Resume                         = doResume
 runCommand StepInto                       = doStepInto
 runCommand StepOver                       = doStepLocal
 runCommand History                        = notEnd $ showHistory defaultHistSize
+runCommand Back                           = notEnd $ back
+runCommand Forward                        = notEnd $ forward
 runCommand Exit                           = return ([], True)
 runCommand (BreakList modName)            = notEnd $ showBreaks modName
 runCommand Help                           = printString fullHelpText >> return ([], False) -- todo: return string as Result
@@ -481,6 +483,7 @@ getExprType expr = do
             ("type", ConsStr doc)
         ]
 
+-- | ":eval"
 evaluate :: String -> DebuggerMonad Result
 evaluate str = do
     -- it seems that __evalResult is not stored after evaluating, so it is safe to do such binding
@@ -493,6 +496,29 @@ evaluate str = do
             ("info", ConsStr "evaluated"),
             ("type", ConsStr type'),
             ("value", ConsStr value)
+        ]
+
+-- | ":back"
+back :: DebuggerMonad Result
+back = do
+    (names, _, pan) <- GHC.back
+    names_str <- mapM showOutputable names
+    return [
+            ("info", ConsStr "stepped back"),
+            ("src_span", srcSpanAsJSON pan),
+            ("vars", ConsArr $ map (\name -> ConsObj [("name", ConsStr name), ("type", ConsNull), ("value", ConsNull)]) names_str)
+        ]
+
+-- | ":forward"
+forward :: DebuggerMonad Result
+forward = do
+    (names, ix, pan) <- GHC.forward
+    names_str <- mapM showOutputable names
+    return [
+            ("info", ConsStr "stepped forward"),
+            ("src_span", srcSpanAsJSON pan),
+            ("vars", ConsArr $ map (\name -> ConsObj [("name", ConsStr name), ("type", ConsNull), ("value", ConsNull)]) names_str),
+            ("hist_top", ConsBool (ix == 0))
         ]
 
 fullHelpText :: String
