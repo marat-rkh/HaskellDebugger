@@ -16,6 +16,7 @@ data DebugCommand
     | StepOver
     | Trace String                -- command
     | BreakList String            -- module
+    | LineBreakList String Int    -- module line
     | Exit
     | Help
     | Print String                -- name of binding
@@ -37,6 +38,7 @@ stepInto :: Parser DebugCommand
 stepOver :: Parser DebugCommand
 trace :: Parser DebugCommand
 breaklist :: Parser DebugCommand
+lineBreaklist :: Parser DebugCommand
 exit :: Parser DebugCommand
 help :: Parser DebugCommand
 printName :: Parser DebugCommand
@@ -57,6 +59,7 @@ debugCommand = unlist [
                         stepOver,
                         trace,
                         breaklist,
+                        lineBreaklist,
                         exit,
                         help,
                         printName,
@@ -136,6 +139,16 @@ breaklist = do
     skipSpaces
     end
     return $ BreakList mod'
+
+lineBreaklist = do
+    string ":breaklist"
+    waitAndSkipSpaces
+    mod' <- restSatisfiedChars (not . isSpace)
+    waitAndSkipSpaces
+    line <- int
+    skipSpaces
+    end
+    return $ LineBreakList mod' line
 
 exit = do
     string ":q"

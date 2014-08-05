@@ -153,6 +153,7 @@ runCommand Back                           = notEnd $ back
 runCommand Forward                        = notEnd $ forward
 runCommand Exit                           = return ([], True)
 runCommand (BreakList modName)            = notEnd $ showBreaks modName
+runCommand (LineBreakList modName line)   = notEnd $ showBreaksForLine modName line
 runCommand Help                           = printString fullHelpText >> return ([], False) -- todo: return string as Result
 runCommand (Print name)                   = doPrint name >> return ([], False)
 runCommand (SPrint name)                  = doSPrint name >> return ([], False)
@@ -455,7 +456,7 @@ showHistory num = do
                     ("end_reached", ConsBool (null rest))
                 ]
 
--- | ':breaklist' command
+-- | ':breaklist <mod>' command
 showBreaks :: String -> DebuggerMonad Result
 showBreaks modName = do
     modBreaks <- getModBreaks modName
@@ -467,6 +468,16 @@ showBreaks modName = do
                     ("src_span", srcSpanAsJSON e)
                 ]) locs)
         ]
+
+-- | ':breaklist <mod> <line>' command
+showBreaksForLine :: String -> Int -> DebuggerMonad Result
+showBreaksForLine modName line = do
+    breaksInfo <- findBreaksContainingLine modName line
+    return [
+            ("info", ConsStr $ "break list for line " ++ (show line)),
+            ("breaks",
+             ConsArr $ map (\(i, e) -> ConsObj [("index", ConsInt i), ("src_span", srcSpanAsJSON e)]) breaksInfo)
+           ]
 
 -- | ':print', ':sprint' and ':force' commands
 doPrint, doSPrint, doForce :: String -> DebuggerMonad ()
