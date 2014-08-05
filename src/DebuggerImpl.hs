@@ -527,7 +527,7 @@ forward = do
                     ("name", ConsStr name),
                     ("type", ConsStr ty),
                     ("value", ConsStr val)
-                ]) (zip names_str evs))
+                ]) (zip names_str evs)),
             ("hist_top", ConsBool (ix == 0))
         ]
 
@@ -592,5 +592,6 @@ printAllBreaksInfo modName = do
 execCommands :: [String] -> DebuggerMonad ()
 execCommands []       = return ()
 execCommands (c : cs) = do
-    runCommand $ fst $ head $ parse debugCommand c
+    result <- tryRun (runCommand $ fst $ head $ parse debugCommand c)
+    printJSON $ fst result
     execCommands cs
