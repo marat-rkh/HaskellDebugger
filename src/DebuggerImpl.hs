@@ -155,9 +155,8 @@ runCommand Exit                           = return ([], True)
 runCommand (BreakList modName)            = notEnd $ showBreaks modName
 runCommand (LineBreakList modName line)   = notEnd $ showBreaksForLine modName line
 runCommand Help                           = printString fullHelpText >> return ([], False) -- todo: return string as Result
-runCommand (Print name)                   = doPrint name >> return ([], False)
-runCommand (SPrint name)                  = doSPrint name >> return ([], False)
-runCommand (Force expr)                   = doForce expr >> return ([], False)
+runCommand (SPrint name)                  = notEnd $ doSPrint name
+runCommand (Force expr)                   = notEnd $ doForce expr
 runCommand (ExprType expr)                = notEnd $ getExprType expr
 runCommand (Evaluate force expr)          = notEnd $ evaluate force expr
 runCommand _                              = return ([
@@ -479,11 +478,10 @@ showBreaksForLine modName line = do
              ConsArr $ map (\(i, e) -> ConsObj [("index", ConsInt i), ("src_span", srcSpanAsJSON e)]) breaksInfo)
            ]
 
--- | ':print', ':sprint' and ':force' commands
-doPrint, doSPrint, doForce :: String -> DebuggerMonad ()
-doPrint  = pprintClosureCommand True False
-doSPrint = pprintClosureCommand False False
-doForce  = pprintClosureCommand False True
+-- | ':sprint' and ':force' commands
+doSPrint, doForce :: String -> DebuggerMonad Result
+doSPrint = evaluate False
+doForce  = evaluate True
 
 getExprType :: String -> DebuggerMonad Result
 getExprType expr = do
@@ -553,8 +551,7 @@ fullHelpText =
     "   :delete <mod> <ind>         delete the breakpoint with index <ind> from module <mod>\n" ++
     "   :force <expr>               print <expr>, forcing unevaluated parts\n" ++
     "   :history                    after :trace, show the execution history\n" ++
-    "   :print <name>               prints a value without forcing its computation\n" ++
-    "   :sprint <name>              simplifed version of :print\n" ++
+    "   :sprint <name>              prints a value without forcing its computation\n" ++
     "   :step                       single-step after stopping at a breakpoint\n" ++
     "   :steplocal                  single-step within the current top-level binding\n" ++
     "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n" ++
