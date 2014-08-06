@@ -473,7 +473,8 @@ showBreaksForLine :: String -> Int -> DebuggerMonad Result
 showBreaksForLine modName line = do
     breaksInfo <- findBreaksContainingLine modName line
     return [
-            ("info", ConsStr $ "break list for line " ++ (show line)),
+            ("info", ConsStr $ "break list for line"),
+            ("line", ConsStr $ show line),
             ("breaks",
              ConsArr $ map (\(i, e) -> ConsObj [("index", ConsInt i), ("src_span", srcSpanAsJSON e)]) breaksInfo)
            ]
