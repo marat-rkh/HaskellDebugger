@@ -159,7 +159,7 @@ runCommand (Print name)                   = doPrint name >> return ([], False)
 runCommand (SPrint name)                  = doSPrint name >> return ([], False)
 runCommand (Force expr)                   = doForce expr >> return ([], False)
 runCommand (ExprType expr)                = notEnd $ getExprType expr
-runCommand (Evaluate expr)                = notEnd $ evaluate expr
+runCommand (Evaluate force expr)          = notEnd $ evaluate force expr
 runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -495,13 +495,13 @@ getExprType expr = do
         ]
 
 -- | ":eval"
-evaluate :: String -> DebuggerMonad Result
-evaluate str = do
+evaluate :: Bool -> String -> DebuggerMonad Result
+evaluate force str = do
     -- it seems that __evalResult is not stored after evaluating, so it is safe to do such binding
     RunOk [name] <- GHC.runStmt ("let __evalResult = " ++ str) GHC.RunToCompletion
     Just (AnId id') <- GHC.lookupName name
     type' <- showSDoc $ pprTypeForUser False (GHC.idType id')
-    term <- GHC.obtainTermFromId 100 True id'
+    term <- GHC.obtainTermFromId 100 force id'
     value <- showOutputable term
     return [
             ("info", ConsStr "evaluated"),
@@ -514,7 +514,7 @@ back :: DebuggerMonad Result
 back = do
     (names, _, pan) <- GHC.back
     names_str <- mapM showOutputable names
-    evs <- mapM evaluate names_str
+    evs <- mapM (evaluate False) names_str
     return [
             ("info", ConsStr "stepped back"),
             ("src_span", srcSpanAsJSON pan),
@@ -530,7 +530,7 @@ forward :: DebuggerMonad Result
 forward = do
     (names, ix, pan) <- GHC.forward
     names_str <- mapM showOutputable names
-    evs <- mapM evaluate names_str
+    evs <- mapM (evaluate False) names_str
     return [
             ("info", ConsStr "stepped forward"),
             ("src_span", srcSpanAsJSON pan),
@@ -559,7 +559,7 @@ fullHelpText =
     "   :steplocal                  single-step within the current top-level binding\n" ++
     "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n" ++
     "   :type <expr>                show the type of <expr>" ++
-    "   :eval <expr>                evaluates <expr>" ++
+    "   :eval <int> <expr>          evaluates <expr> ((<int> > 0) => forced evaluation)" ++
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------

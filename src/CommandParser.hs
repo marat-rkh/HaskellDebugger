@@ -23,7 +23,7 @@ data DebugCommand
     | SPrint String               -- name of binding
     | Force String                -- expr
     | ExprType String             -- expr
-    | Evaluate String             -- expr
+    | Evaluate Bool String        -- force, expr
     | Unknown
         deriving Show
 
@@ -193,8 +193,10 @@ exprType = do
 evaluate = do
     string ":eval"
     waitAndSkipSpaces
+    force <- int
+    waitAndSkipSpaces
     cmd <- restOfInput
-    return $ Evaluate cmd
+    return $ Evaluate (force > 0) cmd
 
 unknown = do
     restOfInput
