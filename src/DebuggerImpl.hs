@@ -143,6 +143,7 @@ type Result = [(String, T)]
 -- Inside commands there should not be any output to debug stream
 runCommand :: DebugCommand -> DebuggerMonad (Result, Bool)
 runCommand (SetBreakpoint modName line)   = notEnd $ setBreakpointLikeGHCiDo modName line
+runCommand (SetBreakByIndex modName ind)  = notEnd $ doBreakindex modName ind
 runCommand (RemoveBreakpoint modName ind) = notEnd $ deleteBreakpoint modName ind
 runCommand (Trace command)                = doTrace command
 runCommand Resume                         = doResume
@@ -221,6 +222,28 @@ setBreakpoint modName line selector = do
                                 ("info", ConsStr "breakpoint was not set"),
                                 ("add_info", ConsStr "selector returned Nothing")
                             ]
+
+-- | sets breakpoint by index
+doBreakindex :: String -> Int -> DebuggerMonad Result
+doBreakindex modName breakIndex = do
+    modBreaks <- getModBreaks modName
+    let locs = modBreaks_locs modBreaks
+    let (start, end) = bounds locs
+    case start <= breakIndex && breakIndex <= end of
+        True -> do
+            res <- changeBreakFlagInModBreaks modName breakIndex True
+            if res
+                then return [
+                        ("info", ConsStr "breakpoint was set"),
+                        ("index", ConsInt $ breakIndex),
+                        ("src_span", srcSpanAsJSON $ locs ! breakIndex)
+                            ]
+                else return [
+                        ("info", ConsStr "breakpoint was not set"),
+                        ("add_info", ConsStr "setBreakFlag returned False")
+                            ]
+        False -> do
+            return [ ("info", ConsStr "breakpoint was not set"), ("add_info", ConsStr "wrong index") ]
 
 -- | returns list of (BreakIndex, SrcSpan) for moduleName, where each element satisfies: srcSpanStartLine == line
 -- | todo: this function is very suboptimal, it is temporary decition
@@ -581,7 +604,9 @@ fullHelpText =
     " -- Commands for debugging:\n" ++
     "\n" ++
     "   :break <mod> <l>            set a breakpoint for module <mod> at the line <l>\n" ++
+    "   :breakindex <mod> <i>       set a breakpoint with index <i> for module <mod>\n" ++
     "   :breaklist <mod>            show all available breakpoints (index and span) for module <mod>\n" ++
+    "   :breaklist <mod> <l>        show all breakpoints containing line <l> for module <mod> and \n" ++
     "   :continue                   resume after a breakpoint\n" ++
     "   :delete <mod> <ind>         delete the breakpoint with index <ind> from module <mod>\n" ++
     "   :force <expr>               print <expr>, forcing unevaluated parts\n" ++

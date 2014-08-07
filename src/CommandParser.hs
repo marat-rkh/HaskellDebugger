@@ -7,6 +7,7 @@ import ParserMonad
 ------------------------------------------------------------------------
 data DebugCommand 
     = SetBreakpoint String Int    -- module, line
+    | SetBreakByIndex String Int  -- module, index
     | RemoveBreakpoint String Int -- module, index
     | Resume
     | History
@@ -31,6 +32,7 @@ data DebugCommand
 
 debugCommand :: Parser DebugCommand
 setBreakpoint :: Parser DebugCommand
+setBreakByIndex :: Parser DebugCommand
 removeBreakpoint :: Parser DebugCommand
 resume :: Parser DebugCommand
 history :: Parser DebugCommand
@@ -54,6 +56,7 @@ unknown :: Parser DebugCommand
 
 debugCommand = unlist [
                         setBreakpoint,
+                        setBreakByIndex,
                         removeBreakpoint,
                         resume,
                         history,
@@ -85,6 +88,16 @@ setBreakpoint = do
     skipSpaces
     end
     return $ SetBreakpoint mod' line
+
+setBreakByIndex = do
+    string ":breakindex"
+    waitAndSkipSpaces
+    moduleName <- restSatisfiedChars (not . isSpace)
+    waitAndSkipSpaces
+    ind <- int
+    skipSpaces
+    end
+    return $ SetBreakByIndex moduleName ind
 
 removeBreakpoint = do
     string ":delete"
