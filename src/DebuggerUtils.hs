@@ -87,5 +87,5 @@ srcSpanAsJSON (RealSrcSpan span') = ConsObj [
         ("startline", ConsInt $ srcSpanStartLine span'),
         ("endline", ConsInt $ srcSpanEndLine span'),
         ("startcol", ConsInt $ srcSpanStartCol span'),
-        ("endcol", ConsInt $ srcSpanEndCol span')
+        ("endcol", ConsInt $ srcSpanEndCol span' - 1)
     ]
