@@ -159,6 +159,8 @@ runCommand (SPrint name)                  = notEnd $ doSPrint name
 runCommand (Force expr)                   = notEnd $ doForce expr
 runCommand (ExprType expr)                = notEnd $ getExprType expr
 runCommand (Evaluate force expr)          = notEnd $ evaluate force expr
+runCommand (Set flag)                     = notEnd $ set flag
+runCommand (Unset flag)                   = notEnd $ unset flag
 runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -541,6 +543,38 @@ forward = do
             ("hist_top", ConsBool (ix == 0))
         ]
 
+set :: String -> DebuggerMonad Result
+set flag = do
+    case flag of
+        "-fbreak-on-error" -> do
+            dflags <- GHC.getSessionDynFlags
+            let dflags' = DynFlags.dopt_set dflags DynFlags.Opt_BreakOnError
+                dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnException
+            GHC.setSessionDynFlags dflags''
+            return [("info", ConsStr "break set")]
+        "-fbreak-on-exception" -> do
+            dflags <- GHC.getSessionDynFlags
+            let dflags' = DynFlags.dopt_set dflags DynFlags.Opt_BreakOnException
+                dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnError
+            GHC.setSessionDynFlags dflags''
+            return [("info", ConsStr "break set")]
+        _ -> return [("info", ConsStr "exception"), ("message", ConsStr "Unknown \"set\" flag")]
+
+unset :: String -> DebuggerMonad Result
+unset flag = do
+    case flag of
+        "-fbreak-on-error" -> unsetBreak
+        "-fbreak-on-exception" -> unsetBreak
+        _ -> return [("info", ConsStr "exception"), ("message", ConsStr "Unknown \"unset\" flag")]
+        where
+            unsetBreak = do
+                dflags <- GHC.getSessionDynFlags
+                let dflags' = DynFlags.dopt_unset dflags DynFlags.Opt_BreakOnException
+                    dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnError
+                GHC.setSessionDynFlags dflags''
+                return [("info", ConsStr "break unset")]
+
+
 fullHelpText :: String
 fullHelpText =
     " Commands available from the prompt:\n" ++
@@ -556,8 +590,11 @@ fullHelpText =
     "   :step                       single-step after stopping at a breakpoint\n" ++
     "   :steplocal                  single-step within the current top-level binding\n" ++
     "   :trace <expr>               evaluate <expr> with tracing on (see :history)\n" ++
-    "   :type <expr>                show the type of <expr>" ++
-    "   :eval <int> <expr>          evaluates <expr> ((<int> > 0) => forced evaluation)" ++
+    "   :type <expr>                show the type of <expr>\n" ++
+    "   :eval <int> <expr>          evaluates <expr> ((<int> > 0) => forced evaluation)\n" ++
+    "   :set <flag>                 sets given DynFlag\n" ++
+    "   :unset <flag>               unsets given DynFlag\n" ++
+    "      available flags: -fbreak-on-error, -fbreak-on-exception\n" ++
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------

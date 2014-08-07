@@ -24,6 +24,8 @@ data DebugCommand
     | Force String                -- expr
     | ExprType String             -- expr
     | Evaluate Bool String        -- force, expr
+    | Set String                  -- flag
+    | Unset String                -- flag
     | Unknown
         deriving Show
 
@@ -46,6 +48,8 @@ sprintName :: Parser DebugCommand
 force :: Parser DebugCommand
 exprType :: Parser DebugCommand
 evaluate :: Parser DebugCommand
+set :: Parser DebugCommand
+unset :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -67,6 +71,8 @@ debugCommand = unlist [
                         force,
                         exprType,
                         evaluate,
+                        set,
+                        unset,
                         unknown
                       ]
 
@@ -193,10 +199,26 @@ exprType = do
 evaluate = do
     string ":eval"
     waitAndSkipSpaces
-    force <- int
+    force_int <- int
     waitAndSkipSpaces
     cmd <- restOfInput
-    return $ Evaluate (force > 0) cmd
+    return $ Evaluate (force_int > 0) cmd
+
+set = do
+    string ":set"
+    waitAndSkipSpaces
+    flag <- restSatisfiedChars (not . isSpace)
+    skipSpaces
+    end
+    return $ Set flag
+
+unset = do
+    string ":unset"
+    waitAndSkipSpaces
+    flag <- restSatisfiedChars (not . isSpace)
+    skipSpaces
+    end
+    return $ Unset flag
 
 unknown = do
     restOfInput
