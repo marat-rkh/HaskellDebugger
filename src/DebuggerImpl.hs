@@ -496,7 +496,7 @@ showBreaks modName = do
 -- | ':breaklist <mod> <line>' command
 showBreaksForLine :: String -> Int -> DebuggerMonad Result
 showBreaksForLine modName line = do
-    breaksInfo <- findBreaksContainingLine modName line
+    breaksInfo <- findBreaksForLine modName line
     return [
             ("info", ConsStr $ "break list for line"),
             ("line", ConsStr $ show line),
