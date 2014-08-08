@@ -98,6 +98,16 @@ flushInterpBuffers = do
     liftIO $ hFlush h1
     liftIO $ hFlush h2
 
+turnOffBuffering :: DebuggerMonad ()
+turnOffBuffering = do
+    st <- getDebugState
+    let (Just stdout_ptr) = mb_stdout_ptr st
+    let (Just stderr_ptr) = mb_stderr_ptr st
+    h1 <- liftIO $ getHandle (stdout_ptr)
+    h2 <- liftIO $ getHandle (stderr_ptr)
+    liftIO $ hSetBuffering h1 NoBuffering
+    liftIO $ hSetBuffering h2 NoBuffering
+
 getHandle :: Ptr () -> IO Handle
 getHandle (Ptr addr) = do
     case addrToAny# addr of (# hval #) -> return (unsafeCoerce# hval)

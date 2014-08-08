@@ -59,15 +59,7 @@ data T
 
 instance JSON T where
     readJSON _ = Error "Not implemented"    -- function is not needed
---    readJSON (JSRational b x) = if Data.Ratio.denominator x == 1 then Ok (ConsInt $ Data.Ratio.numerator x) else Error "Non-integer number"
---    readJSON (JSString x) = Ok (ConsStr $ fromJSString x)
---    readJSON (JSArray []) = Ok (ConsArr [])
---    readJSON (JSArray (x:xs)) = conc (readJSON x) (readJSON (JSArray xs)) where
---        conc a b = case a of
---            Error er -> Error er
---            Ok ok -> case b of
---                Error er -> Error er
---                Ok (ConsArr oks) -> Ok $ ConsArr (ok:oks)
+
     showJSON (ConsNull) = JSNull
     showJSON (ConsBool x) = JSBool x
     showJSON (ConsInt x) = JSRational False ((toInteger x) Data.Ratio.% 1)

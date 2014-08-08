@@ -61,6 +61,7 @@ defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut
         setupContext modulePath mainModuleName
         initDebugOutput
         initInterpBuffering
+        turnOffBuffering -- turns off buffering of stdout and stderr of program
         program
         return ()
     ) initState
@@ -314,7 +315,7 @@ doContinue canLogSpan step = do
 afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> DebuggerMonad (Result, Bool)
 afterRunStmt _ (GHC.RunException e) = liftIO $ throwIO e
 afterRunStmt canLogSpan runResult = do
-    flushInterpBuffers
+    -- flushInterpBuffers -- it's not needed to flush because buffering is disabled
     resumes <- GHC.getResumeContext
     case runResult of
         GHC.RunOk names -> do
@@ -326,7 +327,6 @@ afterRunStmt canLogSpan runResult = do
             return (res, True)
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
-              --  names_str <- mapM outToStr names
                 let srcSpan = GHC.resumeSpan $ head resumes
                 functionName <- getFunctionName mbBreakInfo
                 vars <- getNamesInfo names
