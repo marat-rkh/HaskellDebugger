@@ -31,7 +31,7 @@ import Control.Exception (SomeException, throwIO)
 import Data.Maybe
 import DebuggerUtils
 
-import Debugger (pprintClosureCommand)
+import Debugger ()
 
 import PprTyThing
 
@@ -86,7 +86,10 @@ handleArguments = do
             let arg = fst $ head $ parse cmdArgument x
             case arg of
                 Main m    -> modifyDebugState $ \st -> st{mainFile = Just m}
-                Import _  -> return ()
+                Import path -> do
+                    dflags <- getSessionDynFlags
+                    setSessionDynFlags dflags{importPaths = path : importPaths dflags}
+                    return ()
                 SetPort p -> modifyDebugState $ \st -> st{port = Just p}
                 CmdArgsParser.Unknown s -> printJSON [
                         ("info", ConsStr "warning"),
@@ -156,7 +159,7 @@ runCommand Forward                        = notEnd $ forward
 runCommand Exit                           = return ([], True)
 runCommand (BreakList modName)            = notEnd $ showBreaks modName
 runCommand (LineBreakList modName line)   = notEnd $ showBreaksForLine modName line
-runCommand Help                           = printString fullHelpText >> return ([], False) -- todo: return string as Result
+runCommand Help                           = printString fullHelpText >> return ([], False)
 runCommand (SPrint name)                  = notEnd $ doSPrint name
 runCommand (Force expr)                   = notEnd $ doForce expr
 runCommand (ExprType expr)                = notEnd $ getExprType expr
