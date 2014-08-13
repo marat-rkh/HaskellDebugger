@@ -316,7 +316,9 @@ doContinue canLogSpan step = do
     afterRunStmt canLogSpan runResult
 
 afterRunStmt :: (SrcSpan -> Bool) -> GHC.RunResult -> DebuggerMonad (Result, Bool)
-afterRunStmt _ (GHC.RunException e) = liftIO $ throwIO e
+afterRunStmt canLogSpan (GHC.RunException e) = do
+    liftIO $ hPutStrLn stderr (show e)
+    afterRunStmt canLogSpan (GHC.RunOk [])
 afterRunStmt canLogSpan runResult = do
     -- flushInterpBuffers -- it's not needed to flush because buffering is disabled
     resumes <- GHC.getResumeContext
