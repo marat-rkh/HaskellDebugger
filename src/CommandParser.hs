@@ -27,6 +27,7 @@ data DebugCommand
     | Evaluate Bool String        -- force, expr
     | Set String                  -- flag
     | Unset String                -- flag
+    | BreakinfoCmd
     | Unknown
         deriving Show
 
@@ -52,6 +53,7 @@ exprType :: Parser DebugCommand
 evaluate :: Parser DebugCommand
 set :: Parser DebugCommand
 unset :: Parser DebugCommand
+breakinfo :: Parser DebugCommand
 unknown :: Parser DebugCommand
 
 debugCommand = unlist [
@@ -76,6 +78,7 @@ debugCommand = unlist [
                         evaluate,
                         set,
                         unset,
+                        breakinfo,
                         unknown
                       ]
 
@@ -232,6 +235,12 @@ unset = do
     skipSpaces
     end
     return $ Unset flag
+
+breakinfo = do
+    string ":breakinfo"
+    skipSpaces
+    end
+    return BreakinfoCmd
 
 unknown = do
     restOfInput

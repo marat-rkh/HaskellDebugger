@@ -166,6 +166,7 @@ runCommand (ExprType expr)                = notEnd $ getExprType expr
 runCommand (Evaluate force expr)          = notEnd $ evaluate force expr
 runCommand (Set flag)                     = notEnd $ set flag
 runCommand (Unset flag)                   = notEnd $ unset flag
+runCommand BreakinfoCmd                   = notEnd $ doBreakinfo
 runCommand _                              = return ([
                                                 ("info", ConsStr "exception"),
                                                 ("message", ConsStr "unknown command")
@@ -451,16 +452,31 @@ getNamesInfo names = do
 
 getCurrentBreakModule :: DebuggerMonad (Maybe Module)
 getCurrentBreakModule = do
-  resumes <- GHC.getResumeContext
-  case resumes of
-    [] -> return Nothing
-    (r:_) -> do
-        let ix = GHC.resumeHistoryIx r
-        if ix == 0
-           then return (GHC.breakInfo_module `liftM` GHC.resumeBreakInfo r)
-           else do
-                let hist = GHC.resumeHistory r !! (ix-1)
-                return $ Just $ GHC.getHistoryModule  hist
+    mbBreakInfo <- getCurrentBreakInfo
+    return $ GHC.breakInfo_module `liftM` mbBreakInfo
+
+
+getCurrentBreakInfo :: DebuggerMonad (Maybe BreakInfo)
+getCurrentBreakInfo = do
+    resumes <- GHC.getResumeContext
+    case resumes of
+        [] -> return Nothing
+        (r:_) -> do
+            let ix = GHC.resumeHistoryIx r
+            if ix == 0
+               then return $ GHC.resumeBreakInfo r
+               else do
+                    let hist = GHC.resumeHistory r !! (ix-1)
+                    return $ Just $ GHC.historyBreakInfo hist
+
+-- | ':breakinfo' debugCommand
+doBreakinfo :: DebuggerMonad Result
+doBreakinfo = do
+    mbBreakInfo <- getCurrentBreakInfo
+    case mbBreakInfo of
+        Nothing        -> printString "# No break info available"
+        Just breakInfo -> printOutputable breakInfo
+    return []
 
 -- | ':history' command
 showHistory :: Int -> DebuggerMonad Result
@@ -625,6 +641,7 @@ fullHelpText =
     "   :set <flag>                 sets given DynFlag\n" ++
     "   :unset <flag>               unsets given DynFlag\n" ++
     "      available flags: -fbreak-on-error, -fbreak-on-exception\n" ++
+    "   :breakinfo                  pretty printing for current BreakInfo\n" ++
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
