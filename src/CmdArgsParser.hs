@@ -8,19 +8,22 @@ data Argument
     = SetPort Int
     | Main String
     | Import String
+    | ExposePkg String
     | Unknown String
         deriving Show
 
-cmdArgument     :: Parser Argument
-mainArgument    :: Parser Argument
-importArgument  :: Parser Argument
-setPortArgument :: Parser Argument
-unknownArgument :: Parser Argument
+cmdArgument       :: Parser Argument
+mainArgument      :: Parser Argument  -- -m<file>
+importArgument    :: Parser Argument  -- -i<path>
+setPortArgument   :: Parser Argument  -- -p<port>
+exposePkgArgument :: Parser Argument  -- -pkg<package>
+unknownArgument   :: Parser Argument
 
 cmdArgument = unlist [
         mainArgument,
         importArgument,
         setPortArgument,
+        exposePkgArgument,
         unknownArgument
     ]
 
@@ -41,6 +44,12 @@ setPortArgument = do
     p <- int
     end
     return $ SetPort p
+
+exposePkgArgument = do
+    string "-pkg"
+    package <- restSatisfiedChars (not . isSpace)
+    end
+    return $ ExposePkg package
 
 unknownArgument = do
     arg <- restOfInput

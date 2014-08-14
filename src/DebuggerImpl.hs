@@ -26,7 +26,7 @@ import Data.Array
 import Data.Function (on)
 import SrcLoc (realSrcSpanEnd)
 
-import Control.Exception (SomeException, throwIO)
+import Control.Exception (SomeException)
 
 import Data.Maybe
 import DebuggerUtils
@@ -91,6 +91,10 @@ handleArguments = do
                     setSessionDynFlags dflags{importPaths = path : importPaths dflags}
                     return ()
                 SetPort p -> modifyDebugState $ \st -> st{port = Just p}
+                ExposePkg pkg -> do
+                    dflags <- getSessionDynFlags
+                    setSessionDynFlags dflags{packageFlags = ExposePackage pkg : packageFlags dflags}
+                    return ()
                 CmdArgsParser.Unknown s -> printJSON [
                         ("info", ConsStr "warning"),
                         ("message", ConsStr $ "unknown argument: " ++ s)
