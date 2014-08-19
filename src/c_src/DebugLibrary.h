@@ -1,3 +1,3 @@
 extern "C" {
-    int test_lib(int x);
+    void print_hvalue(void* hval);
 }

@@ -6,7 +6,6 @@ import ForeignDebugLib
 
 main :: IO ()
 main = defaultRunGhc startCommandLine
---main = putStrLn . show =<< c_test_lib 4
 
 
 -- | tests below assume that TestMainModule.hs has the following code:

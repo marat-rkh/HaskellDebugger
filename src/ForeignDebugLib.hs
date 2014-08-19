@@ -1,8 +1,8 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
-{-# INCLUDE "c_src/DebugLibrary.h" #-}
 
 module ForeignDebugLib where
 
 import Foreign.C
+import Foreign.Ptr
 
-foreign import ccall unsafe "test_lib" c_test_lib :: CInt -> IO CInt
+foreign import ccall unsafe "print_hvalue" c_print_hvalue :: Ptr () -> IO ()

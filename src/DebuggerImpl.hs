@@ -5,6 +5,7 @@ module DebuggerImpl where
 
 import GHC hiding (resume, back, forward)
 import qualified GHC (resume, back, forward)
+import qualified InteractiveEval
 import GHC.Paths ( libdir )
 import DynFlags
 import GhcMonad (liftIO)
@@ -34,6 +35,9 @@ import DebuggerUtils
 import Debugger ()
 
 import PprTyThing
+
+import ForeignDebugLib
+import GHC.Exts
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -338,6 +342,8 @@ afterRunStmt canLogSpan runResult = do
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 let srcSpan = GHC.resumeSpan $ head resumes
+                    apStack = InteractiveEval.resumeApStack $ head resumes
+                liftIO $ c_print_hvalue (Ptr (unsafeCoerce# apStack))
                 functionName <- getFunctionName mbBreakInfo
                 vars <- getNamesInfo names
                 let res = [

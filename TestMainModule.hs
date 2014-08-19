@@ -12,5 +12,5 @@ qsort [] = []
 qsort (a:as) = qsort (left a as) ++ [a] ++ qsort (right a as)
 
 main :: IO ()
-main = print (qsort [8])
---main = print (qsort [8, 4, 0, 3, 1, 23, 11, 18])
+--main = print (qsort [8]) >> undefined
+main = print (qsort [8, 4, 0, 3, 1, 23, 11, 18])
