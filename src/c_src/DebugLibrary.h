@@ -1,3 +1,4 @@
 extern "C" {
-    void print_hvalue(void* hval);
+    void print_info_table(const void* hval);
+    void print_ap_stack(const void* hval);
 }

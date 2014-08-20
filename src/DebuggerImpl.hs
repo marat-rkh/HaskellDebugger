@@ -343,7 +343,7 @@ afterRunStmt canLogSpan runResult = do
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 let srcSpan = GHC.resumeSpan $ head resumes
                     apStack = InteractiveEval.resumeApStack $ head resumes
-                liftIO $ c_print_hvalue (Ptr (unsafeCoerce# apStack))
+                --liftIO $ c_print_ap_stack (Ptr (unsafeCoerce# apStack))
                 functionName <- getFunctionName mbBreakInfo
                 vars <- getNamesInfo names
                 let res = [
