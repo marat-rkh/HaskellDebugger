@@ -338,7 +338,7 @@ afterRunStmt canLogSpan runResult = do
                         ("info", ConsStr "finished"),
                         ("names", ConsArr $ map ConsStr names_str)
                     ]
-            return (res, True)
+            return (res, False)
         GHC.RunBreak _ names mbBreakInfo
             | isNothing  mbBreakInfo || canLogSpan (GHC.resumeSpan $ head resumes) -> do
                 let srcSpan = GHC.resumeSpan $ head resumes
