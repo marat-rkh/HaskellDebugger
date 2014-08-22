@@ -316,7 +316,8 @@ deleteBreakpoint modName breakIndex = do
 doTrace :: String -> DebuggerMonad (Result, Bool)
 doTrace []   = doContinue (const True) GHC.RunAndLogSteps
 doTrace expr = do
-    runResult <- GHC.runStmt expr GHC.RunAndLogSteps
+    runResult <- GHC.runStmt expr GHC.RunAndLogSteps `gcatch`
+        (\ex -> (liftIO $ hPutStrLn stderr $ show (ex::SomeException)) >> (return $ GHC.RunOk []))
     afterRunStmt (const True) runResult
 
 doContinue :: (SrcSpan -> Bool) -> SingleStep -> DebuggerMonad (Result, Bool)
