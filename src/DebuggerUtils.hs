@@ -10,6 +10,12 @@ import qualified FastString
 import Text.JSON
 import qualified Data.Ratio
 import Name
+import Control.Exception (SomeException)
+
+
+-- | Remove casting to SomeException
+catch :: DebuggerMonad a -> (SomeException -> DebuggerMonad a) -> DebuggerMonad a
+catch = gcatch
 
 compareNames :: Name -> Name -> Ordering
 n1 `compareNames` n2 = compareWith n1 `compare` compareWith n2

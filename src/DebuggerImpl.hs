@@ -27,8 +27,6 @@ import Data.Array
 import Data.Function (on)
 import SrcLoc (realSrcSpanEnd)
 
-import Control.Exception (SomeException)
-
 import Data.Maybe
 import DebuggerUtils
 
@@ -42,10 +40,10 @@ import GHC.Exts
 ---- || Debugger runner || --------------------------------------------------------------------------
 
 tryRun :: DebuggerMonad (Result, Bool) -> DebuggerMonad (Result, Bool)
-tryRun func = func `gcatch`
+tryRun func = func `catch`
     (\ex -> return ([
             ("info", ConsStr "exception"),
-            ("message", ConsStr $ show (ex::SomeException))
+            ("message", ConsStr $ show ex)
         ], False))
 
 
@@ -125,15 +123,15 @@ initDebugOutput = do
                         ("info", ConsStr "connected to port"),
                         ("port", ConsInt port')
                     ];
-            } `gcatch` (\ex -> printJSON [
+            } `catch` (\ex -> printJSON [
                         ("info", ConsStr "exception"),
-                        ("message", ConsStr $ show (ex::SomeException) ++ "; using stdout for debug output")
+                        ("message", ConsStr $ show ex ++ "; using stdout for debug output")
                     ])
 
 -- |In loop waits for commands and executes them
 startCommandLine :: DebuggerMonad ()
 startCommandLine = whileNot $ do
-    command <- getCommand stdin
+    command <- getCommand stdin `catch` (const $ return Exit)
     result <- tryRun (runCommand command)
     printJSON $ fst result
     return $ snd result
@@ -316,8 +314,8 @@ deleteBreakpoint modName breakIndex = do
 doTrace :: String -> DebuggerMonad (Result, Bool)
 doTrace []   = doContinue (const True) GHC.RunAndLogSteps
 doTrace expr = do
-    runResult <- GHC.runStmt expr GHC.RunAndLogSteps `gcatch`
-        (\ex -> (liftIO $ hPutStrLn stderr $ show (ex::SomeException)) >> (return $ GHC.RunOk []))
+    runResult <- GHC.runStmt expr GHC.RunAndLogSteps `catch`
+        (\ex -> (liftIO $ hPutStrLn stderr $ show ex) >> (return $ GHC.RunOk []))
     afterRunStmt (const True) runResult
 
 doContinue :: (SrcSpan -> Bool) -> SingleStep -> DebuggerMonad (Result, Bool)
