@@ -1,0 +1,20 @@
+name:                remote-debugger
+version:             0.1.0
+description:         Realization of remote interface to haskell debugger.
+license:             BSD3
+maintainer:          kurbatsky@gmail.com
+build-type:          Simple
+homepage:            https://github.com/octomarat/HaskellDebugger
+bug-reports:         https://github.com/octomarat/HaskellDebugger/issues
+cabal-version:       >=1.8
+
+executable remote-debugger
+    main-is:            Main.hs
+    hs-source-dirs:     src
+    build-depends:      base,
+                        ghc,
+                        ghc-paths,
+                        array,
+                        network,
+                        json
+    C-Sources:          src/c_src/DebugLibrary.cpp
