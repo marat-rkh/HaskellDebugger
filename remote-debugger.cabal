@@ -1,5 +1,5 @@
 name:                remote-debugger
-version:             0.1.0
+version:             0.1.1
 description:         Wraper to GHC debugger API allowing debugging throught socket. Used in haskell-idea-plugin.
 license:             BSD3
 license-file:        LICENSE
@@ -13,6 +13,14 @@ cabal-version:       >=1.8
 
 executable remote-debugger
     main-is:            Main.hs
+    other-modules:
+                        CmdArgsParser,
+                        CommandParser,
+                        DebuggerImpl,
+                        DebuggerMonad,
+                        DebuggerUtils,
+                        ParserMonad
+
     hs-source-dirs:     src
     build-depends:      base >= 3 && <5,
                         ghc,
