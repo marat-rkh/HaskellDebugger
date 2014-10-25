@@ -17,4 +17,3 @@ executable remote-debugger
                         array,
                         network,
                         json
-    C-Sources:          src/c_src/DebugLibrary.cpp

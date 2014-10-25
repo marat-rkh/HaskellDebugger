@@ -34,8 +34,7 @@ import Debugger ()
 
 import PprTyThing
 
-import ForeignDebugLib
-import GHC.Exts
+import GHC.Exts()
 
 ---- || Debugger runner || --------------------------------------------------------------------------
 
@@ -56,11 +55,8 @@ defaultRunGhc program = defaultErrorHandler defaultFatalMessager defaultFlushOut
         modulePath <- do
             case (mainFile st) of
                 Just path -> return path
-                Nothing   -> printJSON [
-                        ("info", ConsStr "warning"),
-                        ("message", ConsStr $ "Main module not specified, choosing " ++ mainModulePath)
-                    ] >> return mainModulePath
-        setupContext modulePath mainModuleName
+                Nothing   -> error "Main module not specified"
+        setupContext modulePath "Main"
         initDebugOutput
         initInterpBuffering
         turnOffBuffering -- turns off buffering of stdout and stderr of program
@@ -78,7 +74,8 @@ setupContext pathToModule nameOfModule = do
                                 }
     setTargets =<< sequence [guessTarget pathToModule Nothing]
     GHC.load LoadAllTargets
-    setContext [IIModule $ mkModuleName nameOfModule]
+    -- setContext [IIModule $ mkModuleName nameOfModule]
+    return ()
 
 handleArguments :: DebuggerMonad ()
 handleArguments = do
@@ -654,18 +651,6 @@ fullHelpText =
     "   :q                          exit debugger\n"
 
 ---- || Hardcoded parameters (temporary for testing) || -----------------
-
--- |Test module file
-mainModulePath :: String
-mainModulePath = "TestMainModule.hs"
-
--- |Test module name
-mainModuleName :: String
-mainModuleName = "Main"
-
--- |Context for test file
-setupStandardContext :: DebuggerMonad ()
-setupStandardContext = setupContext mainModulePath mainModuleName
 
 -- |Default history size
 defaultHistSize :: Int
