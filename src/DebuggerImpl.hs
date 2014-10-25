@@ -74,7 +74,7 @@ setupContext pathToModule nameOfModule = do
                                 }
     setTargets =<< sequence [guessTarget pathToModule Nothing]
     GHC.load LoadAllTargets
-    -- setContext [IIModule $ mkModuleName nameOfModule]
+    setContext [IIModule $ mkModuleName nameOfModule]
     return ()
 
 handleArguments :: DebuggerMonad ()
