@@ -286,12 +286,13 @@ getModBreaks modName = do
 changeBreakFlagInModBreaks :: String -> Int -> Bool -> DebuggerMonad Bool
 changeBreakFlagInModBreaks modName flagIndex flagValue = do
     modBreaks <- getModBreaks modName
+    dflags <- GHC.getSessionDynFlags
     let breaksFlags = modBreaks_flags modBreaks
-    liftIO $ setBreakFlag breaksFlags flagIndex flagValue
+    liftIO $ setBreakFlag dflags breaksFlags flagIndex flagValue
 
-setBreakFlag :: BreakArray -> Int -> Bool -> IO Bool
-setBreakFlag bArr ind flag | flag      = setBreakOn bArr ind
-                           | otherwise = setBreakOff bArr ind
+setBreakFlag :: DynFlags -> BreakArray -> Int -> Bool -> IO Bool
+setBreakFlag dynFlags bArr ind flag | flag      = setBreakOn dynFlags bArr ind
+                                    | otherwise = setBreakOff dynFlags bArr ind
 
 -- | ':delete <module name> <break index>' command
 deleteBreakpoint ::  String -> Int -> DebuggerMonad Result
@@ -446,7 +447,7 @@ getNamesInfo names = do
 
             getThingType :: TyThing -> DebuggerMonad (String)
             getThingType (AnId id') = do
-                showSDoc $ pprTypeForUser False (GHC.idType id')
+                showSDoc $ pprTypeForUser (GHC.idType id')
             getThingType _ = fail "Shouldn't be here"
 
             getThingValue :: TyThing -> DebuggerMonad (String)
@@ -539,7 +540,7 @@ doForce  = evaluate True
 getExprType :: String -> DebuggerMonad Result
 getExprType expr = do
     ty <- GHC.exprType expr
-    doc <- showSDoc $ pprTypeForUser False ty
+    doc <- showSDoc $ pprTypeForUser ty
     return [
             ("info", ConsStr "expression type"),
             ("type", ConsStr doc)
@@ -551,7 +552,7 @@ evaluate force str = do
     -- it seems that __evalResult is not stored after evaluating, so it is safe to do such binding
     RunOk [name] <- GHC.runStmt ("let __evalResult = " ++ str) GHC.RunToCompletion
     Just (AnId id') <- GHC.lookupName name
-    type' <- showSDoc $ pprTypeForUser False (GHC.idType id')
+    type' <- showSDoc $ pprTypeForUser (GHC.idType id')
     term <- GHC.obtainTermFromId 100 force id'
     value <- showOutputable term
     return [
@@ -598,14 +599,14 @@ set flag = do
     case flag of
         "-fbreak-on-error" -> do
             dflags <- GHC.getSessionDynFlags
-            let dflags' = DynFlags.dopt_set dflags DynFlags.Opt_BreakOnError
-                dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnException
+            let dflags' = DynFlags.gopt_set dflags DynFlags.Opt_BreakOnError
+                dflags'' = DynFlags.gopt_unset dflags' DynFlags.Opt_BreakOnException
             GHC.setSessionDynFlags dflags''
             return [("info", ConsStr "break set")]
         "-fbreak-on-exception" -> do
             dflags <- GHC.getSessionDynFlags
-            let dflags' = DynFlags.dopt_set dflags DynFlags.Opt_BreakOnException
-                dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnError
+            let dflags' = DynFlags.gopt_set dflags DynFlags.Opt_BreakOnException
+                dflags'' = DynFlags.gopt_unset dflags' DynFlags.Opt_BreakOnError
             GHC.setSessionDynFlags dflags''
             return [("info", ConsStr "break set")]
         _ -> return [("info", ConsStr "exception"), ("message", ConsStr "Unknown \"set\" flag")]
@@ -619,8 +620,8 @@ unset flag = do
         where
             unsetBreak = do
                 dflags <- GHC.getSessionDynFlags
-                let dflags' = DynFlags.dopt_unset dflags DynFlags.Opt_BreakOnException
-                    dflags'' = DynFlags.dopt_unset dflags' DynFlags.Opt_BreakOnError
+                let dflags' = DynFlags.gopt_unset dflags DynFlags.Opt_BreakOnException
+                    dflags'' = DynFlags.gopt_unset dflags' DynFlags.Opt_BreakOnError
                 GHC.setSessionDynFlags dflags''
                 return [("info", ConsStr "break unset")]
 
@@ -665,7 +666,8 @@ printAllBreaksInfo modName = do
     modBreaks <- getModBreaks modName
     -- modBreaks_flags - 0 if unset 1 if set
     printString "# modBreaks_flags:"
-    liftIO $ showBreakArray $ modBreaks_flags $ modBreaks
+    dynFlags <- getSessionDynFlags
+    liftIO $ showBreakArray dynFlags $ modBreaks_flags $ modBreaks
     -- modBreaks_locs - breakpoint index and SrcSpan
     printString "# modBreaks_locs:"
     mapM (\(i, e) -> printString (show i ++ " : " ++ show e)) $ assocs $ modBreaks_locs $ modBreaks
