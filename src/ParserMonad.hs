@@ -1,6 +1,7 @@
 module ParserMonad where
 
 import Data.Char
+import Control.Applicative hiding (many, (<|>))
 
 -- | Parser type
 newtype Parser a = P (String -> [ (a, String) ])
@@ -21,6 +22,10 @@ instance Monad Parser where
         parse (fp2 a) cs'
     return x   = P $ \cs -> [ (x, cs) ]
     fail _     = P $ \_ ->  []
+
+instance Applicative Parser where
+    pure x = P $ \cs -> [ (x, cs) ]
+    a <*> b = a >>= (\f -> fmap f b)
 
 instance Functor Parser where
     fmap f p = p >>= \x -> return (f x)
@@ -88,7 +93,7 @@ skipSpaces = do
 -- | Skips spacing characters (more than zero)
 waitAndSkipSpaces :: Parser ()
 waitAndSkipSpaces = do
-    restSatisfiedChars isSpace
+    _ <- restSatisfiedChars isSpace
     return ()
 
 -- | Returns remaining input
@@ -100,7 +105,7 @@ restOfInput = manySatisfiedChars $ const True
 end :: Parser ()
 end = do
     b <- do {
-             c <- anyChar ;
+             _ <- anyChar ;
              return False ;
          } <|> return True
     if b then return () else fail "End wasn't reached"
