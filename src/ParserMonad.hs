@@ -87,7 +87,7 @@ restSatisfiedChars = rest . satisfy
 -- | Skips spacing characters
 skipSpaces :: Parser ()
 skipSpaces = do
-    manySatisfiedChars isSpace
+    _ <- manySatisfiedChars isSpace
     return ()
 
 -- | Skips spacing characters (more than zero)
