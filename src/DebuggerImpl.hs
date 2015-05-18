@@ -92,7 +92,7 @@ handleArguments = do
                 SetPort p -> modifyDebugState $ \st -> st{port = Just p}
                 ExposePkg pkg -> do
                     dflags <- getSessionDynFlags
-                    setSessionDynFlags dflags{packageFlags = ExposePackage pkg : packageFlags dflags}
+                    setSessionDynFlags dflags{packageFlags = ExposePackage (PackageArg pkg) (ModRenaming False []) : packageFlags dflags}
                     return ()
                 CmdArgsParser.Unknown s -> printJSON [
                         ("info", ConsStr "warning"),
