@@ -23,7 +23,7 @@ executable remote-debugger
 
     hs-source-dirs:     src
     build-depends:      base >= 3 && <5,
-                        ghc == 7.8.3,
+                        ghc >= 7.10,
                         ghc-paths,
                         array,
                         network,

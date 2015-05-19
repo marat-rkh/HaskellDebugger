@@ -64,6 +64,10 @@ instance Monad DebuggerMonad where
 instance Functor DebuggerMonad where
     fmap = liftM
 
+instance Applicative DebuggerMonad where
+    pure  = return
+    (<*>) = ap
+
 instance HasDynFlags DebuggerMonad where
     getDynFlags = getSessionDynFlags
 
